@@ -1,32 +1,13 @@
 {
   "project_info": {
-    "project_number": "721151707463",
-    "project_id": "calendar-match-app",
-    "storage_bucket": "calendar-match-app.firebasestorage.app"
+    "project_number": "134608174033",
+    "project_id": "sukekenn-dd7ef",
+    "storage_bucket": "sukekenn-dd7ef.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:721151707463:android:bed753005b384d76b8e462",
-        "android_client_info": {
-          "package_name": "com.example.calendar_match_app"
-        }
-      },
-      "oauth_client": [],
-      "api_key": [
-        {
-          "current_key": "AIzaSyA4iG11U0ZFNeUzTCLDxvvV8eTu4Hn4HPg"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": []
-        }
-      }
-    },
-    {
-      "client_info": {
-        "mobilesdk_app_id": "1:721151707463:android:e3ededee6335210cb8e462",
+        "mobilesdk_app_id": "1:134608174033:android:89302eedff8fcc749f7ef0",
         "android_client_info": {
           "package_name": "com.hiroshi.sukekenn"
         }
@@ -34,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyA4iG11U0ZFNeUzTCLDxvvV8eTu4Hn4HPg"
+          "current_key": "AIzaSyDaezRgthB6PS1LX5R4ScQKxKFpXuBGgZU"
         }
       ],
       "services": {

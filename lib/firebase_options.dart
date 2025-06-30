@@ -85,4 +85,5 @@ class DefaultFirebaseOptions {
     storageBucket: 'calendar-match-app.firebasestorage.app',
     measurementId: 'G-LDZDDRB2X6',
   );
+
 }
