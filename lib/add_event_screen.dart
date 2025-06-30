@@ -1,10 +1,12 @@
-// lib/add_event_screen.dart の全文
-
+// lib/add_event_screen.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import 'package:sukekenn/core/models/event.dart';
+import 'package:sukekenn/core/models/event.dart'; // パスを修正
+
+// 注意: このファイルは簡易的な予定追加画面です。
+// より詳細な予定登録・編集は lib/presentation/pages/calendar/widgets/event_form.dart を使用することを推奨します。
 
 class AddEventScreen extends StatefulWidget {
   const AddEventScreen({super.key});
@@ -17,13 +19,12 @@ class _AddEventScreenState extends State<AddEventScreen> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
 
-  // ここから以下の変数の宣言が正しく存在することを確認してください
   DateTime _selectedStartDate = DateTime.now();
   TimeOfDay _selectedStartTime = TimeOfDay.now();
   DateTime _selectedEndDate = DateTime.now();
   TimeOfDay _selectedEndTime = TimeOfDay.fromDateTime(DateTime.now().add(const Duration(hours: 1)));
 
-  EventType _selectedEventType = EventType.fixed;
+  EventType _selectedEventType = EventType.fixed; // デフォルトを固定予定に
   bool _isPublic = false;
 
   @override
@@ -43,11 +44,13 @@ class _AddEventScreenState extends State<AddEventScreen> {
       setState(() {
         if (isStart) {
           _selectedStartDate = picked;
+          // 開始日が終了日より後にならないように調整
           if (_selectedEndDate.isBefore(_selectedStartDate)) {
             _selectedEndDate = _selectedStartDate;
           }
         } else {
           _selectedEndDate = picked;
+          // 終了日が開始日より前にならないように調整
           if (_selectedStartDate.isAfter(_selectedEndDate)) {
             _selectedStartDate = _selectedEndDate;
           }
@@ -109,19 +112,20 @@ class _AddEventScreenState extends State<AddEventScreen> {
 
     final newEvent = Event(
       id: FirebaseFirestore.instance.collection('events').doc().id,
-      userId: user.uid,
+      ownerId: user.uid, // userId を ownerId に変更
       title: _titleController.text,
       startTime: startDateTime,
       endTime: endDateTime,
       type: _selectedEventType,
-      isPublic: _selectedEventType != EventType.fixed ? _isPublic : false,
+      isFixed: _selectedEventType == EventType.fixed, // fixedタイプならisFixed=true
+      isPublic: _selectedEventType != EventType.fixed ? _isPublic : false, // 固定予定は非公開扱い
     );
 
     try {
       await FirebaseFirestore.instance
           .collection('events')
           .doc(newEvent.id)
-          .set(newEvent.toJson());
+          .set(newEvent.toFirestore()); // toJson() を toFirestore() に変更
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('予定が保存されました！')),
@@ -134,7 +138,6 @@ class _AddEventScreenState extends State<AddEventScreen> {
     }
   }
 
-  // ここから下の build メソッドが正しく存在することを確認してください
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -192,7 +195,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
                   setState(() {
                     _selectedEventType = newValue!;
                     if (_selectedEventType == EventType.fixed) {
-                      _isPublic = false;
+                      _isPublic = false; // 固定予定は常に非公開
                     }
                   });
                 },

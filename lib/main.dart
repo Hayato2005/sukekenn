@@ -1,16 +1,19 @@
+// lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'firebase_options.dart';
 import 'package:sukekenn/home_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'check_profile_screen.dart';
-import 'package:sukekenn/calendar_home_screen.dart';
-import 'package:sukekenn/chat_screen.dart';
-import 'package:sukekenn/friend_screen.dart';
-import 'package:sukekenn/matching_screen.dart';
-import 'package:sukekenn/my_page_screen.dart';
+import 'package:sukekenn/check_profile_screen.dart';
+// 以下のインポートはmain_screen.dart で管理するため削除またはコメントアウト
+// import 'package:sukekenn/calendar_home_screen.dart';
+// import 'package:sukekenn/chat_screen.dart';
+// import 'package:sukekenn/friend_screen.dart';
+// import 'package:sukekenn/matching_screen.dart';
+// import 'package:sukekenn/my_page_screen.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart'; // 新規追加
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,20 +29,37 @@ void main() async {
     print('Firebase initialize error: $e');
   }
 
-  runApp(const MyApp());
+  // ここをProviderScopeでラップ
+  runApp(
+    const ProviderScope( // ProviderScopeでMyAppをラップ
+      child: MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
   @override
   Widget build(BuildContext context) {
+    // ダークモード対応のために MaterialApp を ConsumerWidget にすることも検討
+    // final appSettings = ref.watch(appSettingsProvider);
     return MaterialApp(
       title: 'Sukekenn',
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        brightness: Brightness.light, // デフォルトライトモード
+      ),
+      darkTheme: ThemeData(
+        primarySwatch: Colors.blue,
+        brightness: Brightness.dark, // デフォルトダークモード
+      ),
+      // themeMode: appSettings.isDarkMode ? ThemeMode.dark : ThemeMode.light, // appSettingsProviderと連携する場合
       home: const CheckProfileScreen(), // 最初の画面
     );
   }
 }
 
+// PhoneAuthPage のコードはそのまま
 class PhoneAuthPage extends StatefulWidget {
   const PhoneAuthPage({super.key});
   @override
