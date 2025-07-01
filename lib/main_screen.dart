@@ -1,7 +1,7 @@
 // lib/main_screen.dart の全文
 
 import 'package:flutter/material.dart';
-import 'calendar_home_screen.dart';
+import 'package:sukekenn/presentation/pages/calendar/calendar_page.dart'; // 修正点：新しいカレンダーページをインポート
 import 'chat_screen.dart';
 import 'friend_screen.dart';
 import 'matching_screen.dart';
@@ -17,13 +17,13 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
 
-  // ここから下の各画面の呼び出しから 'const' を削除します。
+  // 修正点：呼び出すウィジェットを CalendarHomeScreen から CalendarPage に変更
   final List<Widget> _pages = [
-    CalendarHomeScreen(), // const を削除
-    ChatScreen(),         // const を削除
-    FriendScreen(),       // const を削除
-    MatchingScreen(),     // const を削除
-    MyPageScreen(),       // const を削除
+    const CalendarPage(), 
+    const ChatScreen(),
+    const FriendScreen(),
+    const MatchingScreen(),
+    const MyPageScreen(),
   ];
 
   @override
