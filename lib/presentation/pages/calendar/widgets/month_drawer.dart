@@ -19,7 +19,7 @@ class MonthDrawer extends StatelessWidget {
               leading: const Icon(Icons.calendar_view_week),
               title: const Text('週表示に切り替え'),
               onTap: () {
-                Navigator.pushReplacement(
+                Navigator.push( // ここを push に変更
                   context,
                   MaterialPageRoute(
                     builder: (_) => WeekViewScreen(startDate: DateTime.now()),

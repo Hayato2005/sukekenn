@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:sukekenn/calendar_home_screen.dart';
+import 'package:sukekenn/main_screen.dart';
 
 class WeekDrawer extends StatelessWidget {
   const WeekDrawer({super.key});
@@ -19,9 +20,10 @@ class WeekDrawer extends StatelessWidget {
               leading: const Icon(Icons.calendar_month),
               title: const Text('月表示に切り替え'),
               onTap: () {
-                Navigator.pushReplacement(
+                Navigator.pushAndRemoveUntil( // popからpushAndRemoveUntilに変更
                   context,
-                  MaterialPageRoute(builder: (_) => const CalendarHomeScreen()),
+                  MaterialPageRoute(builder: (context) => const MainScreen()),
+                  (Route<dynamic> route) => false, // これまでのルートを全てクリア
                 );
               },
             ),
