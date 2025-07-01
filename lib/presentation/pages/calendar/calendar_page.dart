@@ -8,8 +8,8 @@ import 'package:sukekenn/core/models/event.dart';
 import 'package:sukekenn/presentation/pages/calendar/widgets/calendar_day_cell.dart';
 import 'package:sukekenn/presentation/pages/calendar/widgets/day_timeline_popup.dart';
 import 'package:sukekenn/presentation/pages/calendar/widgets/event_form_page.dart';
-// --- 修正点：お客様の環境のパスに合わせます ---
-import 'package:sukekenn/presentation/pages/calendar/widgets/app_drawer.dart'; 
+// --- 修正点：app_drawer.dartのimportパスを修正 ---
+import 'widgets/app_drawer.dart'; 
 import 'package:sukekenn/presentation/pages/calendar/widgets/year_month_picker_modal.dart';
 import 'package:sukekenn/presentation/pages/calendar/widgets/week_view_widget.dart';
 import 'package:table_calendar/table_calendar.dart';

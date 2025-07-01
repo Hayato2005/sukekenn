@@ -2,7 +2,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:sukekenn/main_screen.dart';
 
 class ProfileEditScreen extends StatefulWidget {
   const ProfileEditScreen({super.key});
@@ -26,54 +25,41 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
 
   Future<void> _saveProfile() async {
     FocusScope.of(context).unfocus();
-
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
+    if (!_formKey.currentState!.validate() || _isLoading) return;
+    setState(() => _isLoading = true);
 
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+    if (user == null) {
+        setState(() => _isLoading = false);
+        return;
+    }
 
     final displayName = _displayNameController.text.trim();
     final id = _idController.text.trim();
 
-    setState(() => _isLoading = true);
-
     try {
-      final idSnapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .where('id', isEqualTo: id)
-          .limit(1)
-          .get();
-
+      final idSnapshot = await FirebaseFirestore.instance.collection('users').where('id', isEqualTo: id).limit(1).get();
       if (idSnapshot.docs.isNotEmpty && idSnapshot.docs.first.id != user.uid) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("このIDは既に使用されています")),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("このIDは既に使用されています")));
         setState(() => _isLoading = false);
         return;
       }
-
+      
+      // プロフィール情報をFirestoreに保存
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
         'displayName': displayName,
         'id': id,
         'uid': user.uid,
         'phoneNumber': user.phoneNumber,
+        'createdAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      if (mounted){
-         Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => const MainScreen()),
-          (route) => false,
-        );
-      }
+      // 保存後の画面遷移はmain.dartのStreamBuilderが自動的に検知して行うので、ここでの遷移コードは不要
 
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("エラーが発生しました: $e")),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("エラーが発生しました: $e")));
     } finally {
        if (mounted) {
         setState(() => _isLoading = false);
@@ -84,10 +70,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("プロフィール設定"),
-        automaticallyImplyLeading: false,
-      ),
+      appBar: AppBar(title: const Text("プロフィール設定"), automaticallyImplyLeading: false),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Form(
@@ -97,46 +80,24 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
             children: [
               TextFormField(
                 controller: _displayNameController,
-                decoration: const InputDecoration(
-                  labelText: "表示名",
-                  border: OutlineInputBorder(),
-                  hintText: '他のユーザーに表示される名前'
-                ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return '表示名を入力してください';
-                  }
-                  return null;
-                },
+                decoration: const InputDecoration(labelText: "表示名", border: OutlineInputBorder()),
+                validator: (value) => (value == null || value.trim().isEmpty) ? '表示名を入力してください' : null,
               ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: _idController,
-                decoration: const InputDecoration(
-                  labelText: "ユーザーID",
-                  border: OutlineInputBorder(),
-                  hintText: '半角英数字とアンダースコア(_)のみ'
-                ),
-                 validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'ユーザーIDを入力してください';
-                  }
-                  if (!RegExp(r'^[a-zA-Z0-9_]{4,15}$').hasMatch(value)) {
-                    return '4〜15文字の半角英数字と_のみ使用できます';
-                  }
+                decoration: const InputDecoration(labelText: "ユーザーID", border: OutlineInputBorder(), hintText: '半角英数字と_のみ'),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) return 'ユーザーIDを入力してください';
+                  if (!RegExp(r'^[a-zA-Z0-9_]{4,15}$').hasMatch(value)) return '4〜15文字の半角英数字と_のみ使用できます';
                   return null;
                 },
               ),
               const SizedBox(height: 32),
-              _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                      ),
-                      onPressed: _saveProfile,
-                      child: const Text("保存して開始する"),
-                    ),
+              ElevatedButton(
+                onPressed: _isLoading ? null : _saveProfile,
+                child: _isLoading ? const CircularProgressIndicator() : const Text("保存して開始する"),
+              ),
             ],
           ),
         ),
