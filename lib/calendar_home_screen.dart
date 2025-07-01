@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
 import 'week_view_screen.dart';
+import 'package:sukekenn/presentation/pages/calendar/widgets/month_drawer.dart';
 
-
-void main() async{
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('ja');
   runApp(MaterialApp(home: CalendarHomeScreen()));
@@ -24,7 +24,7 @@ class _CalendarHomeScreenState extends State<CalendarHomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      drawer: buildDrawer(),
+      drawer: const MonthDrawer(),
       body: SafeArea(
         child: Column(
           children: [
@@ -106,58 +106,7 @@ class _CalendarHomeScreenState extends State<CalendarHomeScreen> {
       ),
     );
   }
-
-  Widget buildDrawer() {
-    DateTime startDate = displayedMonth;
-    DateTime endDate = displayedMonth.add(const Duration(days: 6));
-    return Drawer(
-      child: ListView(
-        children: [
-          const DrawerHeader(child: Text('表示切替')),
-          ListTile(
-            title: const Text('週表示'),
-            onTap: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('週表示に切替')));
-            },
-          ),
-          ListTile(
-            title: const Text('月表示'),
-            onTap: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('月表示に切替')));
-            },
-          ),
-          ListTile(
-            title: const Text('自由範囲選択'),
-            subtitle: Text('${DateFormat('yyyy/MM/dd').format(startDate)}〜${DateFormat('yyyy/MM/dd').format(endDate)}'),
-            onTap: () async {
-              final pickedRange = await showDateRangePicker(
-                context: context,
-                firstDate: DateTime(2000),
-                lastDate: DateTime(2100),
-                initialDateRange: DateTimeRange(start: startDate, end: endDate),
-              );
-              if (pickedRange != null) {
-                final rangeDays = pickedRange.end.difference(pickedRange.start).inDays + 1;
-                if (rangeDays > 42) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('43日以上は選択できません')),
-                  );
-                } else {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('${rangeDays}日間を表示')),
-                  );
-                }
-              }
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
+  
   Widget buildMonthView(DateTime month) {
     final firstDayOfMonth = DateTime(month.year, month.month, 1);
     final firstWeekday = firstDayOfMonth.weekday % 7;
@@ -249,102 +198,90 @@ class _CalendarHomeScreenState extends State<CalendarHomeScreen> {
     return today.year == date.year && today.month == date.month && today.day == date.day;
   }
 
-void showDayTimeline(DateTime date, List<Map<String, dynamic>> schedules) {
-  final double initialHourHeight = 28.75; // 初期表示の1時間の高さを30pxに
-  ValueNotifier<double> scaleNotifier = ValueNotifier(1.0);
+  void showDayTimeline(DateTime date, List<Map<String, dynamic>> schedules) {
+    final double initialHourHeight = 28.75;
+    ValueNotifier<double> scaleNotifier = ValueNotifier(1.0);
 
-  showDialog(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: Text('${DateFormat('M月d日').format(date)}の予定'),
-      content: Container(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.8,
-          maxWidth: MediaQuery.of(context).size.width * 0.9,
-        ),
-        child: ValueListenableBuilder<double>(
-          valueListenable: scaleNotifier,
-          builder: (context, scale, _) {
-            return GestureDetector(
-              onScaleUpdate: (details) {
-                double newScale = (scale * details.scale).clamp(0.5, 4.0);
-                scaleNotifier.value = newScale;
-              },
-              child: SingleChildScrollView(
-                child: SizedBox(
-                  height: 25 * initialHourHeight * scale,
-                  child: Stack(
-                    children: [
-                      // 時間の線とラベル
-                      ...List.generate(25, (hour) => Positioned(
-                            top: hour * initialHourHeight * scale,
-                            left: 0,
-                            right: 0,
-                            child: Row(
-                              children: [
-                                SizedBox(
-                                  width: 50,
-                                  child: Text('${hour.toString().padLeft(2, '0')}:00'),
-                                ),
-                                Expanded(
-                                  child: Container(height: 1, color: Colors.grey.shade400),
-                                ),
-                              ],
-                            ),
-                          )),
-                      // 予定表示
-                      ...schedules.map((s) => Positioned(
-                            top: s['startHour'] * initialHourHeight * scale,
-                            left: 50,
-                            right: 0,
-                            height: (s['endHour'] - s['startHour']) * initialHourHeight * scale,
-                            child: Container(
-                              margin: const EdgeInsets.symmetric(horizontal: 4),
-                              decoration: BoxDecoration(
-                                color: s['color'],
-                                borderRadius: BorderRadius.circular(4),
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('${DateFormat('M月d日').format(date)}の予定'),
+        content: Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.8,
+            maxWidth: MediaQuery.of(context).size.width * 0.9,
+          ),
+          child: ValueListenableBuilder<double>(
+            valueListenable: scaleNotifier,
+            builder: (context, scale, _) {
+              return GestureDetector(
+                onScaleUpdate: (details) {
+                  double newScale = (scale * details.scale).clamp(0.5, 4.0);
+                  scaleNotifier.value = newScale;
+                },
+                child: SingleChildScrollView(
+                  child: SizedBox(
+                    height: 25 * initialHourHeight * scale,
+                    child: Stack(
+                      children: [
+                        ...List.generate(25, (hour) => Positioned(
+                              top: hour * initialHourHeight * scale,
+                              left: 0,
+                              right: 0,
+                              child: Row(
+                                children: [
+                                  SizedBox(width: 50, child: Text('${hour.toString().padLeft(2, '0')}:00')),
+                                  Expanded(child: Container(height: 1, color: Colors.grey.shade400)),
+                                ],
                               ),
-                              padding: const EdgeInsets.all(4),
-                              child: Text(
-                                '${s['title']} (ユーザー)',
-                                style: TextStyle(
-                                  color: (s['color'] as Color).computeLuminance() < 0.5 ? Colors.white : Colors.black,
-                                  fontSize: 10,
+                            )),
+                        ...schedules.map((s) => Positioned(
+                              top: s['startHour'] * initialHourHeight * scale,
+                              left: 50,
+                              right: 0,
+                              height: (s['endHour'] - s['startHour']) * initialHourHeight * scale,
+                              child: Container(
+                                margin: const EdgeInsets.symmetric(horizontal: 4),
+                                decoration: BoxDecoration(
+                                  color: s['color'],
+                                  borderRadius: BorderRadius.circular(4),
                                 ),
-                                overflow: TextOverflow.ellipsis,
+                                padding: const EdgeInsets.all(4),
+                                child: Text(
+                                  '${s['title']} (ユーザー)',
+                                  style: TextStyle(
+                                    color: (s['color'] as Color).computeLuminance() < 0.5 ? Colors.white : Colors.black,
+                                    fontSize: 10,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
-                            ),
-                          )),
-                    ],
+                            )),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            );
-          },
+              );
+            },
+          ),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('閉じる'),
+          ),
+        ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('閉じる'),
-        ),
-      ],
-    ),
-  );
-}
-
-
-
+    );
+  }
 
   void jumpToWeekView(DateTime date) {
-  final weekStart = date.subtract(Duration(days: date.weekday % 7)); // その週の日曜
-  Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (_) => WeekViewScreen(startDate: weekStart),
-    ),
-  );
-}
+    final weekStart = date.subtract(Duration(days: date.weekday % 7));
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => WeekViewScreen(startDate: weekStart)),
+    );
+  }
 
   void showYearMonthPicker() async {
     int selectedYear = displayedMonth.year;
@@ -392,6 +329,21 @@ void showDayTimeline(DateTime date, List<Map<String, dynamic>> schedules) {
           ),
         ],
       ),
+    );
+  }
+
+  Widget buildBottomNavigationBar() {
+    return BottomNavigationBar(
+      type: BottomNavigationBarType.fixed,
+      items: const [
+        BottomNavigationBarItem(icon: Icon(Icons.home), label: 'ホーム'),
+        BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'チャット'),
+        BottomNavigationBarItem(icon: Icon(Icons.group), label: 'フレンド'),
+        BottomNavigationBarItem(icon: Icon(Icons.search), label: 'マッチング'),
+        BottomNavigationBarItem(icon: Icon(Icons.person), label: 'マイページ'),
+      ],
+      currentIndex: 0,
+      onTap: (index) {},
     );
   }
 }

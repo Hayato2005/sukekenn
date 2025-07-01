@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:sukekenn/presentation/pages/calendar/widgets/week_drawer.dart'; // ドロワー
 
 class WeekViewScreen extends StatefulWidget {
   final DateTime startDate;
@@ -35,7 +36,35 @@ class _WeekViewScreenState extends State<WeekViewScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: buildAppBar(),
+      drawer: const WeekDrawer(),
+      appBar: AppBar(
+        backgroundColor: Colors.grey[200],
+        automaticallyImplyLeading: false,
+        title: Row(
+          children: [
+            Builder(
+              builder: (context) => IconButton(
+                icon: const Icon(Icons.menu, color: Colors.black),
+                onPressed: () => Scaffold.of(context).openDrawer(),
+              ),
+            ),
+            Expanded(
+              child: Center(
+                child: Text(
+                  DateFormat('yyyy年M月', 'ja').format(
+                    startDate.add(Duration(days: _pageController.hasClients ? _pageController.page?.round() ?? initialPage : initialPage)),
+                  ),
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black),
+                ),
+              ),
+            ),
+            IconButton(icon: const Icon(Icons.check_box, color: Colors.black), onPressed: () {}),
+            IconButton(icon: const Icon(Icons.settings, color: Colors.black), onPressed: () {}),
+            IconButton(icon: const Icon(Icons.person_add, color: Colors.black), onPressed: () {}),
+          ],
+        ),
+        iconTheme: const IconThemeData(color: Colors.black),
+      ),
       body: PageView.builder(
         controller: _pageController,
         itemCount: totalDays,
@@ -45,38 +74,6 @@ class _WeekViewScreenState extends State<WeekViewScreen> {
           return buildWeekView(startOfWeek);
         },
       ),
-      bottomNavigationBar: buildBottomNavigationBar(),
-    );
-  }
-
-  PreferredSizeWidget buildAppBar() {
-    final currentPage = _pageController.hasClients ? _pageController.page?.round() ?? initialPage : initialPage;
-    final currentDate = startDate.add(Duration(days: currentPage));
-    return AppBar(
-      backgroundColor: Colors.grey[200],
-      automaticallyImplyLeading: false,
-      title: Row(
-        children: [
-          Builder(
-            builder: (context) => IconButton(
-              icon: const Icon(Icons.menu),
-              onPressed: () => Scaffold.of(context).openDrawer(),
-            ),
-          ),
-          Expanded(
-            child: Center(
-              child: Text(
-                '${DateFormat('yyyy年M月', 'ja').format(currentDate)}',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black),
-              ),
-            ),
-          ),
-          IconButton(icon: const Icon(Icons.check_box), onPressed: () {}),
-          IconButton(icon: const Icon(Icons.settings), onPressed: () {}),
-          IconButton(icon: const Icon(Icons.person_add), onPressed: () {}),
-        ],
-      ),
-      iconTheme: const IconThemeData(color: Colors.black),
     );
   }
 
@@ -94,33 +91,26 @@ class _WeekViewScreenState extends State<WeekViewScreen> {
             child: SingleChildScrollView(
               controller: _scrollController,
               child: SizedBox(
-                height: 25 * hourHeight, // 0-24時までの24時間分の高さ
+                height: 25 * hourHeight,
                 child: Row(
                   children: [
-                    // 時間ラベル
                     SizedBox(
                       width: 60,
                       child: Stack(
-                        children: [
-                          ...List.generate(25, (hour) {
-                            double topPosition;
-                            if (hour == 0) {
-                              topPosition = 0; // 0時線の真上
-                            } else if (hour == 24) {
-                              topPosition = 24 * hourHeight - 14; // 24時線のすぐ上
-                            } else {
-                              topPosition = hour * hourHeight - 14; // 各時間線の真上
-                            }
-                            return Positioned(
-                              top: topPosition,
-                              right: 4,
-                              child: Text('${hour.toString().padLeft(2, '0')}:00', style: const TextStyle(fontSize: 14)),
-                            );
-                          }),
-                        ],
+                        children: List.generate(25, (hour) {
+                          final topPosition = hour == 0
+                              ? 0
+                              : hour == 24
+                                  ? 24 * hourHeight - 14
+                                  : hour * hourHeight - 14;
+                          return Positioned(
+                            top: topPosition.toDouble(),
+                            right: 4,
+                            child: Text('${hour.toString().padLeft(2, '0')}:00', style: const TextStyle(fontSize: 14)),
+                          );
+                        }),
                       ),
                     ),
-                    // 各曜日の列
                     Expanded(
                       child: Row(
                         children: List.generate(7, (i) {
@@ -231,21 +221,6 @@ class _WeekViewScreenState extends State<WeekViewScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget buildBottomNavigationBar() {
-    return BottomNavigationBar(
-      type: BottomNavigationBarType.fixed,
-      items: const [
-        BottomNavigationBarItem(icon: Icon(Icons.home), label: 'ホーム'),
-        BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'チャット'),
-        BottomNavigationBarItem(icon: Icon(Icons.group), label: 'フレンド'),
-        BottomNavigationBarItem(icon: Icon(Icons.search), label: 'マッチング'),
-        BottomNavigationBarItem(icon: Icon(Icons.person), label: 'マイページ'),
-      ],
-      currentIndex: 0,
-      onTap: (index) {},
     );
   }
 

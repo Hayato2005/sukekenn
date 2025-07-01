@@ -4,44 +4,63 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'profile_edit_screen.dart';
 import 'main_screen.dart';
 
-class CheckProfileScreen extends StatelessWidget {
+class CheckProfileScreen extends StatefulWidget {
   const CheckProfileScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  State<CheckProfileScreen> createState() => _CheckProfileScreenState();
+}
+
+class _CheckProfileScreenState extends State<CheckProfileScreen> {
+  @override
+  void initState() {
+    super.initState();
+    _checkProfile();
+  }
+
+  Future<void> _checkProfile() async {
     final user = FirebaseAuth.instance.currentUser;
+    if (!mounted) return;
+
     if (user == null) {
-      return const Scaffold(
-        body: Center(child: Text("未ログインです")),
+      // 未ログイン → 任意でログイン画面へ飛ばす場合はここにNavigator
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("未ログインです")),
       );
+      return;
     }
 
-    return FutureBuilder<DocumentSnapshot>(
-      future: FirebaseFirestore.instance.collection('users').doc(user.uid).get(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
-        }
-        if (!snapshot.hasData || !snapshot.data!.exists) {
-          return const Scaffold(
-            body: Center(child: Text("ユーザーデータがありません")),
-          );
-        }
+    final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+    if (!mounted) return;
 
-        final data = snapshot.data!.data() as Map<String, dynamic>;
-        final hasDisplayName = data['displayName'] != null && data['displayName'].toString().isNotEmpty;
-        final hasId = data['id'] != null && data['id'].toString().isNotEmpty;
+    if (!doc.exists) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("ユーザーデータがありません")),
+      );
+      return;
+    }
 
-        if (!hasDisplayName || !hasId) {
-          // プロフィール未設定 → 設定画面へ
-          return const ProfileEditScreen();
-        } else {
-          // 設定済み → ホームへ
-          return const MainScreen();
-        }
-      },
+    final data = doc.data()!;
+    final hasDisplayName = data['displayName'] != null && data['displayName'].toString().isNotEmpty;
+    final hasId = data['id'] != null && data['id'].toString().isNotEmpty;
+
+    if (!hasDisplayName || !hasId) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const ProfileEditScreen()),
+      );
+    } else {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const MainScreen()),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      body: Center(child: CircularProgressIndicator()),
     );
   }
 }
