@@ -1,222 +1,121 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:sukekenn/presentation/pages/calendar/widgets/week_drawer.dart'; // ドロワー
+import 'dart:math';
+import 'package:sukekenn/filter_dialog.dart';
+import 'package:sukekenn/main_screen.dart';
+import 'package:sukekenn/presentation/pages/calendar/widgets/week_drawer.dart';
+import 'package:sukekenn/schedule_creation_sheet.dart';
 
 class WeekViewScreen extends StatefulWidget {
   final DateTime startDate;
-  const WeekViewScreen({Key? key, required this.startDate}) : super(key: key);
+  const WeekViewScreen({super.key, required this.startDate});
 
   @override
   State<WeekViewScreen> createState() => _WeekViewScreenState();
 }
 
 class _WeekViewScreenState extends State<WeekViewScreen> {
-  final DateTime startDate = DateTime(0, 1, 1);
-  final DateTime endDate = DateTime(3000, 12, 31);
-  late final int totalDays;
-  late final int initialPage;
-  late final PageController _pageController;
-  final ScrollController _scrollController = ScrollController();
+  late DateTime _currentDate;
+  late List<Map<String, dynamic>> fakeSchedules;
+  double _scale = 1.0;
+  final TransformationController _transformationController = TransformationController();
 
-  double hourHeight = 50.0;
+  bool _isSelectionMode = false;
+  final List<Map<String, dynamic>> _selectedSchedules = [];
 
   @override
   void initState() {
     super.initState();
-    totalDays = endDate.difference(startDate).inDays;
-    initialPage = widget.startDate.difference(startDate).inDays;
-    _pageController = PageController(initialPage: initialPage);
+    // 渡された日付が日曜でない場合、その週の日曜に補正する
+    _currentDate = widget.startDate.subtract(Duration(days: widget.startDate.weekday % 7));
+    _generateFakeSchedules();
+  }
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final eightAM = 8 * hourHeight;
-      _scrollController.jumpTo(eightAM);
+  void _generateFakeSchedules() {
+    final random = Random();
+    fakeSchedules = List.generate(10, (index) {
+      final startHour = random.nextInt(22);
+      final duration = random.nextInt(3) + 1;
+      final dayOffset = random.nextInt(7);
+      return {
+        'id': '${_currentDate.millisecondsSinceEpoch}-$index',
+        'title': '予定 ${index + 1}',
+        'day': dayOffset,
+        'startHour': startHour,
+        'endHour': startHour + duration,
+        'color': Colors.primaries[random.nextInt(Colors.primaries.length)],
+      };
     });
+  }
+
+  void _changeWeek(int days) {
+    setState(() {
+      _currentDate = _currentDate.add(Duration(days: days));
+      _generateFakeSchedules();
+    });
+  }
+  
+  void _showScheduleCreationSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.9,
+        maxChildSize: 0.9,
+        minChildSize: 0.5,
+        builder: (_, controller) => ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+          child: ScheduleCreationSheet(controller: controller),
+        ),
+      ),
+    );
+  }
+
+  void _showFilterDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => const FilterDialog(),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: buildWeekHeader(),
       drawer: const WeekDrawer(),
-      appBar: AppBar(
-        backgroundColor: Colors.grey[200],
-        automaticallyImplyLeading: false,
-        title: Row(
-          children: [
-            Builder(
-              builder: (context) => IconButton(
-                icon: const Icon(Icons.menu, color: Colors.black),
-                onPressed: () => Scaffold.of(context).openDrawer(),
-              ),
-            ),
-            Expanded(
-              child: Center(
-                child: Text(
-                  DateFormat('yyyy年M月', 'ja').format(
-                    startDate.add(Duration(days: _pageController.hasClients ? _pageController.page?.round() ?? initialPage : initialPage)),
-                  ),
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black),
-                ),
-              ),
-            ),
-            IconButton(icon: const Icon(Icons.check_box, color: Colors.black), onPressed: () {}),
-            IconButton(icon: const Icon(Icons.settings, color: Colors.black), onPressed: () {}),
-            IconButton(icon: const Icon(Icons.person_add, color: Colors.black), onPressed: () {}),
-          ],
-        ),
-        iconTheme: const IconThemeData(color: Colors.black),
-      ),
-      body: PageView.builder(
-        controller: _pageController,
-        itemCount: totalDays,
-        itemBuilder: (context, index) {
-          final currentDate = startDate.add(Duration(days: index));
-          final startOfWeek = currentDate.subtract(Duration(days: currentDate.weekday % 7));
-          return buildWeekView(startOfWeek);
-        },
-      ),
-    );
-  }
-
-  Widget buildWeekView(DateTime startOfWeek) {
-    return Column(
-      children: [
-        buildWeekHeader(startOfWeek),
-        Expanded(
-          child: GestureDetector(
-            onScaleUpdate: (details) {
-              setState(() {
-                hourHeight = (hourHeight * details.scale).clamp(20.0, 150.0);
-              });
-            },
-            child: SingleChildScrollView(
-              controller: _scrollController,
-              child: SizedBox(
-                height: 25 * hourHeight,
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 60,
-                      child: Stack(
-                        children: List.generate(25, (hour) {
-                          final topPosition = hour == 0
-                              ? 0
-                              : hour == 24
-                                  ? 24 * hourHeight - 14
-                                  : hour * hourHeight - 14;
-                          return Positioned(
-                            top: topPosition.toDouble(),
-                            right: 4,
-                            child: Text('${hour.toString().padLeft(2, '0')}:00', style: const TextStyle(fontSize: 14)),
-                          );
-                        }),
-                      ),
-                    ),
-                    Expanded(
-                      child: Row(
-                        children: List.generate(7, (i) {
-                          final date = startOfWeek.add(Duration(days: i));
-                          return Expanded(
-                            child: Container(
-                              decoration: BoxDecoration(
-                                border: Border(
-                                  right: BorderSide(color: Colors.grey[300]!),
-                                ),
-                              ),
-                              child: Stack(
-                                children: [
-                                  Column(
-                                    children: List.generate(25, (hour) {
-                                      return Stack(
-                                        children: [
-                                          Container(
-                                            height: hourHeight,
-                                            decoration: BoxDecoration(
-                                              border: Border(
-                                                top: BorderSide(
-                                                  color: Colors.grey[400]!,
-                                                  width: 1.0,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                          if (hour < 24)
-                                            Positioned(
-                                              top: hourHeight / 2,
-                                              left: 0,
-                                              right: 0,
-                                              child: Container(
-                                                height: 0.5,
-                                                color: Colors.grey.withOpacity(0.3),
-                                              ),
-                                            ),
-                                        ],
-                                      );
-                                    }),
-                                  ),
-                                  if (i % 2 == 0)
-                                    Positioned(
-                                      top: 8 * hourHeight,
-                                      height: hourHeight * 2,
-                                      left: 2,
-                                      right: 2,
-                                      child: Container(
-                                        decoration: BoxDecoration(
-                                          color: Colors.blue.withOpacity(0.5),
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                        child: const Center(
-                                          child: Text('予定', style: TextStyle(fontSize: 10, color: Colors.white)),
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                          );
-                        }),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget buildWeekHeader(DateTime startOfWeek) {
-    return Container(
-      height: 40,
-      color: Colors.grey[300],
-      child: Row(
+      body: Column(
         children: [
-          const SizedBox(width: 60),
+          // 曜日バーを追加
+          buildWeekDayBar(),
           Expanded(
-            child: Row(
-              children: List.generate(7, (i) {
-                final date = startOfWeek.add(Duration(days: i));
-                final isToday = isSameDate(date, DateTime.now());
-                return Expanded(
-                  child: Container(
-                    color: isToday ? Colors.red[100] : null,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          DateFormat('MM/dd', 'ja').format(date),
-                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                        ),
-                        Text(
-                          DateFormat('E', 'ja').format(date),
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }),
+            child: buildWeekView(),
+          ),
+          if (_isSelectionMode) buildActionBar(),
+        ],
+      ),
+      bottomNavigationBar: buildBottomNavigationBar(context),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          FloatingActionButton(
+            heroTag: 'week_filter_button',
+            mini: true,
+            onPressed: _showFilterDialog,
+            child: const Icon(Icons.filter_list),
+          ),
+          const SizedBox(height: 16),
+          Opacity(
+            opacity: _isSelectionMode ? 0.0 : 1.0,
+            child: IgnorePointer(
+              ignoring: _isSelectionMode,
+              child: FloatingActionButton(
+                heroTag: 'week_add_button',
+                onPressed: _showScheduleCreationSheet,
+                child: const Icon(Icons.add),
+              ),
             ),
           ),
         ],
@@ -224,6 +123,332 @@ class _WeekViewScreenState extends State<WeekViewScreen> {
     );
   }
 
-  bool isSameDate(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
+  AppBar buildWeekHeader() {
+    // (AppBarのコードは前回のものから変更なし)
+    return AppBar(
+      title: GestureDetector(
+        onTap: showWeekPicker,
+        child: Text(
+          '${DateFormat('yyyy年 M月').format(_currentDate)} 第${((_currentDate.day - 1) / 7).floor() + 1}週',
+        ),
+      ),
+      actions: [
+        IconButton(
+          icon: Icon(_isSelectionMode ? Icons.cancel : Icons.check_box_outline_blank),
+          color: Colors.black,
+          onPressed: () {
+            setState(() {
+              _isSelectionMode = !_isSelectionMode;
+              if (!_isSelectionMode) {
+                _selectedSchedules.clear();
+              }
+            });
+          },
+        ),
+        IconButton(
+          icon: const Icon(Icons.settings, color: Colors.black),
+          onPressed: () {},
+        ),
+        IconButton(
+          icon: const Icon(Icons.person_add, color: Colors.black),
+          onPressed: () {},
+        ),
+      ],
+    );
+  }
+
+  // ★★★ 新しく追加した曜日バー ★★★
+  Widget buildWeekDayBar() {
+    const weekDayChars = ['日', '月', '火', '水', '木', '金', '土'];
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
+      ),
+      child: Row(
+        children: List.generate(7, (index) {
+          final date = _currentDate.add(Duration(days: index));
+          final today = DateTime.now();
+          final bool isToday = date.year == today.year && date.month == today.month && date.day == today.day;
+          
+          Color textColor;
+          if(isToday) {
+            textColor = Colors.blue;
+          } else if (date.weekday == DateTime.saturday) {
+            textColor = Colors.blue.shade700;
+          } else if (date.weekday == DateTime.sunday) {
+            textColor = Colors.red.shade600;
+          } else {
+            textColor = Colors.black87;
+          }
+
+          return Expanded(
+            child: Column(
+              children: [
+                Text(
+                  weekDayChars[date.weekday % 7],
+                  style: TextStyle(fontSize: 12, color: textColor),
+                ),
+                const SizedBox(height: 2),
+                CircleAvatar(
+                  radius: 14,
+                  backgroundColor: isToday ? Colors.blue : Colors.transparent,
+                  child: Text(
+                    '${date.day}',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: isToday ? Colors.white : textColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }),
+      ),
+    );
+  }
+
+  void showWeekPicker() async {
+    // (showWeekPickerのコードは前回のものから変更なし)
+    if (_isSelectionMode) return;
+    int selectedYear = _currentDate.year;
+    int selectedMonth = _currentDate.month;
+    int selectedWeek = ((_currentDate.day - 1) / 7).floor() + 1;
+
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('年月週を選択'),
+        content: SizedBox(
+          height: 150,
+          child: Row(
+            children: [
+              Expanded(
+                child: ListWheelScrollView.useDelegate(
+                  itemExtent: 50,
+                  onSelectedItemChanged: (index) => selectedYear = 2000 + index,
+                  controller: FixedExtentScrollController(initialItem: selectedYear - 2000),
+                  childDelegate: ListWheelChildBuilderDelegate(
+                    builder: (context, index) => Center(child: Text('${2000 + index}年')),
+                    childCount: 101,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: ListWheelScrollView.useDelegate(
+                  itemExtent: 50,
+                  onSelectedItemChanged: (index) => selectedMonth = index + 1,
+                  controller: FixedExtentScrollController(initialItem: selectedMonth - 1),
+                  childDelegate: ListWheelChildBuilderDelegate(
+                    builder: (context, index) => Center(child: Text('${index + 1}月')),
+                    childCount: 12,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: ListWheelScrollView.useDelegate(
+                  itemExtent: 50,
+                  onSelectedItemChanged: (index) => selectedWeek = index + 1,
+                  controller: FixedExtentScrollController(initialItem: selectedWeek - 1),
+                  childDelegate: ListWheelChildBuilderDelegate(
+                    builder: (context, index) => Center(child: Text('第${index + 1}週')),
+                    childCount: 6,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              setState(() {
+                DateTime firstDayOfMonth = DateTime(selectedYear, selectedMonth, 1);
+                DateTime dateInSelectedWeek = firstDayOfMonth.add(Duration(days: (selectedWeek - 1) * 7));
+                _currentDate = dateInSelectedWeek.subtract(Duration(days: dateInSelectedWeek.weekday % 7));
+                _generateFakeSchedules();
+              });
+              Navigator.pop(context);
+            },
+            child: const Text('完了'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  BottomNavigationBar buildBottomNavigationBar(BuildContext context) {
+    // (buildBottomNavigationBarのコードは前回のものから変更なし)
+    return BottomNavigationBar(
+      type: BottomNavigationBarType.fixed,
+      items: const [
+        BottomNavigationBarItem(icon: Icon(Icons.home), label: 'ホーム'),
+        BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'チャット'),
+        BottomNavigationBarItem(icon: Icon(Icons.group), label: 'フレンド'),
+        BottomNavigationBarItem(icon: Icon(Icons.search), label: 'マッチング'),
+        BottomNavigationBarItem(icon: Icon(Icons.person), label: 'マイページ'),
+      ],
+      currentIndex: 0,
+      onTap: (index) {
+        if (index == 0) {
+          Navigator.of(context).pop();
+        } else {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (context) => MainScreen(initialIndex: index)),
+            (Route<dynamic> route) => false,
+          );
+        }
+      },
+      selectedItemColor: Colors.blueAccent,
+      unselectedItemColor: Colors.grey,
+    );
+  }
+
+  // (buildWeekView, buildTimeColumn, buildGrid, buildScheduleLayout, buildActionBar の各メソッドは前回のものから変更ありません)
+  Widget buildWeekView() {
+    return GestureDetector(
+      onHorizontalDragEnd: (details) {
+        if (details.primaryVelocity! > 0) {
+          _changeWeek(-7);
+        } else if (details.primaryVelocity! < 0) {
+          _changeWeek(7);
+        }
+      },
+      child: InteractiveViewer(
+        transformationController: _transformationController,
+        minScale: 0.5,
+        maxScale: 4.0,
+        onInteractionEnd: (details) {
+          setState(() {
+            _scale = _transformationController.value.getMaxScaleOnAxis();
+          });
+        },
+        child: SingleChildScrollView(
+          child: SizedBox(
+            height: 24 * 60 * _scale,
+            child: Row(
+              children: [
+                buildTimeColumn(),
+                Expanded(
+                  child: Stack(
+                    children: [
+                      buildGrid(),
+                      ...buildScheduleLayout(),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget buildTimeColumn() {
+    return Column(
+      children: List.generate(24, (index) {
+        return SizedBox(
+          height: 60 * _scale,
+          width: 50,
+          child: Center(child: Text('${index.toString().padLeft(2, '0')}:00')),
+        );
+      }),
+    );
+  }
+
+  Widget buildGrid() {
+    return Column(
+      children: List.generate(24, (hour) {
+        return SizedBox(
+          height: 60 * _scale,
+          child: Row(
+            children: List.generate(7, (day) {
+              return Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    border: Border(
+                      top: const BorderSide(color: Colors.grey),
+                      left: BorderSide(color: Colors.grey.shade300),
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+        );
+      }),
+    );
+  }
+
+  List<Widget> buildScheduleLayout() {
+    return fakeSchedules.map((schedule) {
+      final bool isSelected = _selectedSchedules.any((s) => s['id'] == schedule['id']);
+      final dayWidth = (MediaQuery.of(context).size.width - 50) / 7;
+
+      return Positioned(
+        top: schedule['startHour'] * 60 * _scale,
+        left: schedule['day'] * dayWidth,
+        height: (schedule['endHour'] - schedule['startHour']) * 60 * _scale,
+        width: dayWidth,
+        child: GestureDetector(
+          onTap: _isSelectionMode
+              ? () {
+                  setState(() {
+                    if (isSelected) {
+                      _selectedSchedules.removeWhere((s) => s['id'] == schedule['id']);
+                    } else {
+                      _selectedSchedules.add(schedule);
+                    }
+                  });
+                }
+              : null,
+          child: Container(
+            margin: const EdgeInsets.all(2),
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: schedule['color'],
+              borderRadius: BorderRadius.circular(4),
+              border: isSelected ? Border.all(color: Colors.blueAccent, width: 2.5) : null,
+            ),
+            child: Text(
+              schedule['title'],
+              style: const TextStyle(color: Colors.white, fontSize: 12),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ),
+      );
+    }).toList();
+  }
+
+  Widget buildActionBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+      color: Colors.grey[200],
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          TextButton.icon(
+            icon: const Icon(Icons.delete),
+            label: const Text('削除'),
+            onPressed: _selectedSchedules.isEmpty ? null : () {},
+          ),
+          TextButton.icon(
+            icon: const Icon(Icons.share),
+            label: const Text('共有'),
+            onPressed: _selectedSchedules.isEmpty ? null : () {},
+          ),
+          TextButton.icon(
+            icon: const Icon(Icons.group_add),
+            label: const Text('招待'),
+            onPressed: _selectedSchedules.isEmpty ? null : () {},
+          ),
+        ],
+      ),
+    );
+  }
 }

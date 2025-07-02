@@ -1,56 +1,81 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'profile_edit_screen.dart';
-import 'calendar_home_screen.dart';
-import 'chat_screen.dart';
-import 'friend_screen.dart';
-import 'matching_screen.dart';
-import 'my_page_screen.dart';
-import 'week_view_screen.dart'; // 週表示のインポート
-
+import 'package:sukekenn/calendar_home_screen.dart';
+import 'package:sukekenn/chat_screen.dart';
+import 'package:sukekenn/friend_screen.dart';
+import 'package:sukekenn/matching_screen.dart';
+import 'package:sukekenn/my_page_screen.dart';
 
 class MainScreen extends StatefulWidget {
-  const MainScreen({super.key});
+  // initialIndexを受け取れるようにコンストラクタを修正
+  const MainScreen({super.key, this.initialIndex = 0});
+
+  // 他の画面から遷移してくる際に、開きたいタブのインデックスを指定できるようにする
+  final int initialIndex;
 
   @override
   State<MainScreen> createState() => _MainScreenState();
 }
 
 class _MainScreenState extends State<MainScreen> {
-  int _currentIndex = 0;
+  late int _selectedIndex;
 
-  final List<Widget> _pages = [
-    const CalendarHomeScreen(),
-    const ChatScreen(),
-    const FriendScreen(),
-    const MatchingScreen(),
-    const MyPageScreen(),
+  static const List<Widget> _pages = <Widget>[
+    CalendarHomeScreen(),
+    ChatScreen(),
+    FriendScreen(),
+    MatchingScreen(),
+    MyPageScreen(),
   ];
 
-  void switchToPage(int index) {
+  @override
+  void initState() {
+    super.initState();
+    // 受け取ったinitialIndexで選択されているタブを初期化
+    _selectedIndex = widget.initialIndex;
+  }
+
+  void _onItemTapped(int index) {
     setState(() {
-      _currentIndex = index;
+      _selectedIndex = index;
     });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _pages[_currentIndex],
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: _pages,
+      ),
       bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        type: BottomNavigationBarType.fixed,
-        onTap: switchToPage,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'ホーム'),
-          BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'チャット'),
-          BottomNavigationBarItem(icon: Icon(Icons.group), label: 'フレンド'),
-          BottomNavigationBarItem(icon: Icon(Icons.search), label: 'マッチング'),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'マイページ'),
+        items: const <BottomNavigationBarItem>[
+          BottomNavigationBarItem(
+            icon: Icon(Icons.calendar_today),
+            label: 'ホーム',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.chat_bubble_outline),
+            label: 'チャット',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.people_outline),
+            label: 'フレンド',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.search),
+            label: 'マッチング',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person_outline),
+            label: 'マイページ',
+          ),
         ],
+        currentIndex: _selectedIndex,
+        onTap: _onItemTapped,
+        type: BottomNavigationBarType.fixed, // ラベルを常に表示
+        selectedItemColor: Colors.blueAccent, // 選択中アイテムの色
+        unselectedItemColor: Colors.grey, // 非選択アイテムの色
       ),
     );
   }
 }
-
