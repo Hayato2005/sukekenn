@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:sukekenn/detailed_filter_screen.dart'; // 新規作成
 
 class FilterDialog extends StatefulWidget {
   const FilterDialog({super.key});
@@ -11,47 +12,36 @@ class _FilterDialogState extends State<FilterDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('絞り込みフィルター'),
-      // スクロール可能なコンテンツ
+      title: const Text('フィルター'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('（ここにアプリ概要通りの絞り込み項目が入ります）', style: TextStyle(color: Colors.grey, fontSize: 12)),
-            const SizedBox(height: 16),
-            const Text('期間', style: TextStyle(fontWeight: FontWeight.bold)),
-            const Row(children: [ Expanded(child: Text('開始: 未設定')), Expanded(child: Text('終了: 未設定'))]),
-            const Divider(height: 24),
-            const Text('場所', style: TextStyle(fontWeight: FontWeight.bold)),
-            const Text('未設定'),
-            const Divider(height: 24),
-            const Text('ジャンル', style: TextStyle(fontWeight: FontWeight.bold)),
-            const Wrap(
-              spacing: 8.0,
-              children: [
-                Chip(label: Text('カフェ')),
-                Chip(label: Text('ランチ')),
-                Chip(label: Text('飲み会')),
-              ],
+            // ここに各画面に応じたフィルター項目が入る
+            ListTile(title: const Text('場所'), trailing: const Text('すべて >'), onTap: () {}),
+            const Divider(height: 1),
+            ListTile(title: const Text('ジャンル'), trailing: const Text('すべて >'), onTap: () {}),
+            const Divider(height: 1),
+            ListTile(title: const Text('時間帯'), trailing: const Text('すべて >'), onTap: () {}),
+            const SizedBox(height: 24),
+            // 詳細絞り込み画面へのボタン
+            Center(
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.tune),
+                label: const Text('さらに詳細な条件で絞り込む'),
+                onPressed: () {
+                  Navigator.of(context).pop(); // いったんダイアログを閉じる
+                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => const DetailedFilterScreen()));
+                },
+              ),
             )
           ],
         ),
       ),
       actions: [
-        TextButton(
-          onPressed: () {
-            // TODO: リセット処理
-          },
-          child: const Text('リセット'),
-        ),
-        FilledButton(
-          onPressed: () {
-            // TODO: 絞り込み実行
-            Navigator.of(context).pop();
-          },
-          child: const Text('この条件で絞り込む'),
-        ),
+        TextButton(onPressed: () {}, child: const Text('リセット')),
+        FilledButton(onPressed: () => Navigator.of(context).pop(), child: const Text('適用')),
       ],
     );
   }
