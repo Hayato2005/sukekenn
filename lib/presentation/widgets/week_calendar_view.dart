@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:sukekenn/models/schedule_model.dart';
+import 'package:sukekenn/presentation/widgets/schedule_detail_popup.dart'; // ★ 新規ファイルをインポート
 
 class WeekCalendarView extends StatefulWidget {
   final PageController pageController;
@@ -192,21 +193,25 @@ class _WeekCalendarViewState extends State<WeekCalendarView> {
           left: 50 + dayIndex * ((MediaQuery.of(context).size.width - 50) / 7),
           width: (MediaQuery.of(context).size.width - 50) / 7,
           height: height,
-          child: Container(
-            margin: const EdgeInsets.all(1),
-            decoration: BoxDecoration(
-              color: schedule.color,
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(2),
-              child: Text(
-                schedule.title,
-                style: TextStyle(
-                  fontSize: scheduleFontSize,
-                  color: schedule.color.computeLuminance() < 0.5 ? Colors.white : Colors.black,
+          // ★ タップ時に詳細ポップアップを表示するために GestureDetector を追加
+          child: GestureDetector(
+            onTap: () => showScheduleDetailPopup(context, schedule),
+            child: Container(
+              margin: const EdgeInsets.all(1),
+              decoration: BoxDecoration(
+                color: schedule.color,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(2),
+                child: Text(
+                  schedule.title,
+                  style: TextStyle(
+                    fontSize: scheduleFontSize,
+                    color: schedule.color.computeLuminance() < 0.5 ? Colors.white : Colors.black,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
-                overflow: TextOverflow.ellipsis,
               ),
             ),
           ),

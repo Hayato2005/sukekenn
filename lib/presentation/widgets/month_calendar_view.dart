@@ -1,6 +1,9 @@
+// lib/presentation/widgets/month_calendar_view.dart
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:sukekenn/models/schedule_model.dart';
+import 'package:sukekenn/presentation/widgets/schedule_detail_popup.dart';
 
 class MonthCalendarView extends StatelessWidget {
   final PageController pageController;
@@ -10,7 +13,7 @@ class MonthCalendarView extends StatelessWidget {
   final List<Schedule> selectedSchedules;
   final Function(Schedule) onSelectionChanged;
   final List<Schedule> schedules;
-  double? _lastFocalDy; // This should ideally be in a StatefulWidget for proper state management
+  double? _lastFocalDy; 
 
   MonthCalendarView({
     super.key,
@@ -97,7 +100,7 @@ class MonthCalendarView extends StatelessWidget {
                 child: GestureDetector(
                   onLongPress: isCurrentMonth ? () => _showDayTimeline(context, date, daySchedules) : null,
                   onDoubleTap: isCurrentMonth ? () => onDateDoubleTapped(date) : null,
-                  child: _buildDateCell(date, daySchedules, isCurrentMonth),
+                  child: _buildDateCell(context, date, daySchedules, isCurrentMonth),
                 ),
               );
             }),
@@ -107,7 +110,7 @@ class MonthCalendarView extends StatelessWidget {
     );
   }
 
-  Widget _buildDateCell(DateTime date, List<Schedule> daySchedules, bool isCurrentMonth) {
+  Widget _buildDateCell(BuildContext context, DateTime date, List<Schedule> daySchedules, bool isCurrentMonth) {
     final isToday = DateUtils.isSameDay(date, DateTime.now());
     return Container(
       margin: const EdgeInsets.all(2),
@@ -127,13 +130,13 @@ class MonthCalendarView extends StatelessWidget {
               color: isCurrentMonth ? (isToday ? Colors.red : Colors.black) : Colors.grey,
             ),
           ),
-          ..._buildScheduleItems(daySchedules),
+          ..._buildScheduleItems(context, daySchedules), 
         ],
       ),
     );
   }
-
-  List<Widget> _buildScheduleItems(List<Schedule> schedules) {
+ 
+  List<Widget> _buildScheduleItems(BuildContext context, List<Schedule> schedules) { 
     const double scheduleFontSize = 16;
 
     List<Widget> items = schedules.map((schedule) {
@@ -142,7 +145,7 @@ class MonthCalendarView extends StatelessWidget {
       final textColor = bgColor.computeLuminance() < 0.5 ? Colors.white : Colors.black;
 
       return GestureDetector(
-        onTap: isSelectionMode ? () => onSelectionChanged(schedule) : null,
+        onTap: isSelectionMode ? () => onSelectionChanged(schedule) : () => showScheduleDetailPopup(context, schedule),
         child: Container(
           margin: const EdgeInsets.symmetric(vertical: 2),
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
@@ -212,17 +215,20 @@ class MonthCalendarView extends StatelessWidget {
                     child: Stack(
                       children: [
                         ...List.generate(25, (hour) => Positioned(
+                          // ★ top の-8.0を削除
                           top: hour * hourHeight,
                           left: 0,
                           right: 0,
                           child: Row(
+                            // ★ start に設定し、時間線と予定セルの位置を厳密に合わせる
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               SizedBox(
                                 width: 60,
-                                // ★ ラベルを上に移動させるためにTransform.translateを追加
+                                // ★ ラベルの位置を補正するためにTransform.translateを追加
                                 child: Transform.translate(
-                                  offset: const Offset(0, -8.5), // Y軸方向に-8.5ピクセル移動
+                                  // Y軸方向に-8.5ピクセル（フォントサイズ14の約半分）移動させる
+                                  offset: const Offset(0, -8.5),
                                   child: Align(
                                     alignment: Alignment.centerRight,
                                     child: Text(
@@ -245,29 +251,32 @@ class MonthCalendarView extends StatelessWidget {
                             left: 76,
                             right: 18,
                             height: durationHeight.toDouble(),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: s.color,
-                                borderRadius: BorderRadius.circular(7),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.12),
-                                    offset: const Offset(0, 2),
-                                    blurRadius: 4,
-                                  )
-                                ],
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsets.all(4),
-                                child: Text(
-                                  s.title,
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: s.color.computeLuminance() < 0.5 ? Colors.white : Colors.black,
+                            child: GestureDetector(
+                              onTap: () => showScheduleDetailPopup(context, s),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: s.color,
+                                  borderRadius: BorderRadius.circular(7),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.12),
+                                      offset: const Offset(0, 2),
+                                      blurRadius: 4,
+                                    )
+                                  ],
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(4),
+                                  child: Text(
+                                    s.title,
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: s.color.computeLuminance() < 0.5 ? Colors.white : Colors.black,
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                             ),
