@@ -10,6 +10,7 @@ class MonthCalendarView extends StatelessWidget {
   final List<Schedule> selectedSchedules;
   final Function(Schedule) onSelectionChanged;
   final List<Schedule> schedules;
+  double? _lastFocalDy; // This should ideally be in a StatefulWidget for proper state management
 
   MonthCalendarView({
     super.key,
@@ -211,27 +212,31 @@ class MonthCalendarView extends StatelessWidget {
                     child: Stack(
                       children: [
                         ...List.generate(25, (hour) => Positioned(
-                              top: hour * hourHeight,
-                              left: 0,
-                              right: 0,
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: [
-                                  SizedBox(
-                                    width: 60,
-                                    child: Align(
-                                      alignment: Alignment.centerRight,
-                                      child: Text(
-                                        '${hour.toString().padLeft(2, '0')}:00',
-                                        style: const TextStyle(fontSize: 14),
-                                      ),
+                          top: hour * hourHeight,
+                          left: 0,
+                          right: 0,
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SizedBox(
+                                width: 60,
+                                // ★ ラベルを上に移動させるためにTransform.translateを追加
+                                child: Transform.translate(
+                                  offset: const Offset(0, -8.5), // Y軸方向に-8.5ピクセル移動
+                                  child: Align(
+                                    alignment: Alignment.centerRight,
+                                    child: Text(
+                                      '${hour.toString().padLeft(2, '0')}:00',
+                                      style: const TextStyle(fontSize: 14),
                                     ),
                                   ),
-                                  const SizedBox(width: 10),
-                                  Expanded(child: Container(height: 1, color: Colors.grey.shade500)),
-                                ],
+                                ),
                               ),
-                            )),
+                              const SizedBox(width: 10),
+                              Expanded(child: Container(height: 1, color: Colors.grey.shade500)),
+                            ],
+                          ),
+                        )),
                         ...schedules.map((s) {
                           final topOffset = s.startHour * hourHeight;
                           final durationHeight = ((s.endHour - s.startHour) * hourHeight).clamp(20, double.infinity);
@@ -280,7 +285,4 @@ class MonthCalendarView extends StatelessWidget {
       ),
     );
   }
-
-  double? _lastFocalDy;
 }
-
