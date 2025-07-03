@@ -1,16 +1,16 @@
+// lib/main_screen.dart
+
 import 'package:flutter/material.dart';
-import 'package:sukekenn/calendar_home_screen.dart';
 import 'package:sukekenn/chat_screen.dart';
 import 'package:sukekenn/friend_screen.dart';
 import 'package:sukekenn/matching_screen.dart';
 import 'package:sukekenn/my_page_screen.dart';
+import 'package:sukekenn/calendar_view_screen.dart'; // ★ 新しい画面をインポート
 
 class MainScreen extends StatefulWidget {
-  // initialIndexを受け取れるようにコンストラクタを修正
-  const MainScreen({super.key, this.initialIndex = 0});
-
-  // 他の画面から遷移してくる際に、開きたいタブのインデックスを指定できるようにする
   final int initialIndex;
+
+  const MainScreen({super.key, this.initialIndex = 0});
 
   @override
   State<MainScreen> createState() => _MainScreenState();
@@ -19,8 +19,9 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   late int _selectedIndex;
 
+  // ★ CalendarHomeScreenをCalendarViewScreenに置き換える
   static const List<Widget> _pages = <Widget>[
-    CalendarHomeScreen(),
+    CalendarViewScreen(),
     ChatScreen(),
     FriendScreen(),
     MatchingScreen(),
@@ -30,7 +31,6 @@ class _MainScreenState extends State<MainScreen> {
   @override
   void initState() {
     super.initState();
-    // 受け取ったinitialIndexで選択されているタブを初期化
     _selectedIndex = widget.initialIndex;
   }
 
@@ -43,38 +43,35 @@ class _MainScreenState extends State<MainScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: _pages,
-      ),
+      body: _pages.elementAt(_selectedIndex),
       bottomNavigationBar: BottomNavigationBar(
         items: const <BottomNavigationBarItem>[
           BottomNavigationBarItem(
-            icon: Icon(Icons.calendar_today),
+            icon: Icon(Icons.home),
             label: 'ホーム',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.chat_bubble_outline),
+            icon: Icon(Icons.chat),
             label: 'チャット',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.people_outline),
+            icon: Icon(Icons.people),
             label: 'フレンド',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.search),
+            icon: Icon(Icons.favorite),
             label: 'マッチング',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
+            icon: Icon(Icons.person),
             label: 'マイページ',
           ),
         ],
         currentIndex: _selectedIndex,
+        selectedItemColor: Colors.amber[800],
+        unselectedItemColor: Colors.grey,
         onTap: _onItemTapped,
-        type: BottomNavigationBarType.fixed, // ラベルを常に表示
-        selectedItemColor: Colors.blueAccent, // 選択中アイテムの色
-        unselectedItemColor: Colors.grey, // 非選択アイテムの色
+        type: BottomNavigationBarType.fixed, // アイテムが4つ以上の場合に必要
       ),
     );
   }

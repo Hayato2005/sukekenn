@@ -1,44 +1,48 @@
+// lib/presentation/pages/calendar/widgets/week_drawer.dart
+
 import 'package:flutter/material.dart';
-import 'package:sukekenn/calendar_home_screen.dart';
-import 'package:sukekenn/main_screen.dart';
+import 'package:sukekenn/calendar_view_screen.dart'; // CalendarDisplayModeをインポート
 
 class WeekDrawer extends StatelessWidget {
-  const WeekDrawer({super.key});
+  final Function(CalendarDisplayMode) onNavigate;
+  const WeekDrawer({super.key, required this.onNavigate});
 
   @override
   Widget build(BuildContext context) {
     return Drawer(
-      child: SafeArea(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            const DrawerHeader(
-              decoration: BoxDecoration(color: Colors.blue),
-              child: Text('週表示メニュー', style: TextStyle(color: Colors.white, fontSize: 20)),
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: <Widget>[
+          const DrawerHeader(
+            decoration: BoxDecoration(
+              color: Colors.green, // 週表示用のテーマカラー
             ),
-            ListTile(
-              leading: const Icon(Icons.calendar_month),
-              title: const Text('月表示に切り替え'),
-              onTap: () {
-                Navigator.pushAndRemoveUntil( // popからpushAndRemoveUntilに変更
-                  context,
-                  MaterialPageRoute(builder: (context) => const MainScreen()),
-                  (Route<dynamic> route) => false, // これまでのルートを全てクリア
-                );
-              },
+            child: Text(
+              'カレンダーメニュー',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 24,
+              ),
             ),
-            ListTile(
-              leading: const Icon(Icons.date_range),
-              title: const Text('自由選択範囲に切り替え'),
-              onTap: () {
-                // TODO: 自由選択画面ができたらここで遷移
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('自由選択範囲画面は未実装です')),
-                );
-              },
-            ),
-          ],
-        ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.calendar_month),
+            title: const Text('月表示に切り替え'),
+            onTap: () {
+              // コールバックを呼び出して表示モードを切り替える
+              onNavigate(CalendarDisplayMode.month);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.calendar_view_week),
+            title: const Text('週表示'),
+            tileColor: Colors.grey[300], // 現在の表示モードをハイライト
+            onTap: () {
+               onNavigate(CalendarDisplayMode.week);
+            },
+          ),
+          // 他のメニュー項目...
+        ],
       ),
     );
   }
