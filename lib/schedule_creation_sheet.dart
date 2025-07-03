@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:sukekenn/models/schedule_model.dart';
+import 'package:sukekenn/repositories/schedule_repository.dart';
 
 class ScheduleCreationSheet extends StatefulWidget {
   final ScrollController controller;
-  final Function(Map<String, dynamic>) onSave;
+  final Function(Schedule) onSave;
 
   const ScheduleCreationSheet({
     super.key,
@@ -28,7 +30,7 @@ class _ScheduleCreationSheetState extends State<ScheduleCreationSheet> {
         title: const Text('予定作成'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.check, color: Colors.blue), // ★青くする
+            icon: const Icon(Icons.check, color: Colors.blue),
             onPressed: _saveSchedule,
           ),
         ],
@@ -69,20 +71,13 @@ class _ScheduleCreationSheetState extends State<ScheduleCreationSheet> {
             children: [
               const Text('色:'),
               const SizedBox(width: 8),
-              GestureDetector(
-                onTap: () => setState(() => _selectedColor = Colors.blue),
-                child: CircleAvatar(backgroundColor: Colors.blue, radius: 12),
-              ),
-              const SizedBox(width: 8),
-              GestureDetector(
-                onTap: () => setState(() => _selectedColor = Colors.green),
-                child: CircleAvatar(backgroundColor: Colors.green, radius: 12),
-              ),
-              const SizedBox(width: 8),
-              GestureDetector(
-                onTap: () => setState(() => _selectedColor = Colors.orange),
-                child: CircleAvatar(backgroundColor: Colors.orange, radius: 12),
-              ),
+              ...[Colors.blue, Colors.green, Colors.orange].map((color) => GestureDetector(
+                onTap: () => setState(() => _selectedColor = color),
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  child: CircleAvatar(backgroundColor: color, radius: 12),
+                ),
+              )),
             ],
           ),
         ],
@@ -101,15 +96,16 @@ class _ScheduleCreationSheetState extends State<ScheduleCreationSheet> {
   }
 
   void _saveSchedule() {
-    final newSchedule = {
-      'id': DateTime.now().millisecondsSinceEpoch.toString(),
-      'title': _titleController.text.isEmpty ? '無題' : _titleController.text,
-      'date': _selectedDate,
-      'startHour': _startTime.hour + _startTime.minute / 60,
-      'endHour': _endTime.hour + _endTime.minute / 60,
-      'duration': (_endTime.hour + _endTime.minute / 60) - (_startTime.hour + _startTime.minute / 60),
-      'color': _selectedColor,
-    };
+    final newSchedule = Schedule(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      title: _titleController.text.isEmpty ? '無題' : _titleController.text,
+      date: _selectedDate,
+      startHour: _startTime.hour + _startTime.minute / 60,
+      endHour: _endTime.hour + _endTime.minute / 60,
+      color: _selectedColor,
+    );
+
+    ScheduleRepository().addSchedule(newSchedule);
     widget.onSave(newSchedule);
     Navigator.of(context).pop();
   }

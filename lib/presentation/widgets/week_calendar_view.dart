@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:sukekenn/models/schedule_model.dart';
 
 class WeekCalendarView extends StatefulWidget {
   final PageController pageController;
   final Function(int) onPageChanged;
   final DateTime focusedDate;
-  final List<Map<String, dynamic>> schedules;
+  final List<Schedule> schedules;
 
   const WeekCalendarView({
     super.key,
@@ -53,7 +54,7 @@ class _WeekCalendarViewState extends State<WeekCalendarView> {
               itemBuilder: (context, index) {
                 final weekOffset = index - 5000;
                 final baseDate = widget.focusedDate.add(Duration(days: weekOffset * 7));
-                final startOfWeek = baseDate.subtract(Duration(days: baseDate.weekday % 7)); // ★週頭に補正
+                final startOfWeek = baseDate.subtract(Duration(days: baseDate.weekday - 1)); // 月曜日始まり
                 return _buildWeekGrid(startOfWeek);
               },
             ),
@@ -64,7 +65,7 @@ class _WeekCalendarViewState extends State<WeekCalendarView> {
   }
 
   Widget _buildWeekDayHeader(DateTime dateInWeek) {
-    final startOfWeek = dateInWeek.subtract(Duration(days: dateInWeek.weekday % 7));
+    final startOfWeek = dateInWeek.subtract(Duration(days: dateInWeek.weekday - 1));
     final formatter = DateFormat('d\nE', 'ja');
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
@@ -85,7 +86,9 @@ class _WeekCalendarViewState extends State<WeekCalendarView> {
                     formatter.format(day).split('\n')[1],
                     style: TextStyle(
                       fontSize: 12,
-                      color: day.weekday == DateTime.sunday ? Colors.red : (day.weekday == DateTime.saturday ? Colors.blue : Colors.black),
+                      color: day.weekday == DateTime.sunday
+                          ? Colors.red
+                          : (day.weekday == DateTime.saturday ? Colors.blue : Colors.black),
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -96,7 +99,11 @@ class _WeekCalendarViewState extends State<WeekCalendarView> {
                       formatter.format(day).split('\n')[0],
                       style: TextStyle(
                         fontSize: 14,
-                        color: isToday ? Colors.white : (day.weekday == DateTime.sunday ? Colors.red : (day.weekday == DateTime.saturday ? Colors.blue : Colors.black)),
+                        color: isToday
+                            ? Colors.white
+                            : (day.weekday == DateTime.sunday
+                                ? Colors.red
+                                : (day.weekday == DateTime.saturday ? Colors.blue : Colors.black)),
                       ),
                     ),
                   ),
@@ -110,7 +117,7 @@ class _WeekCalendarViewState extends State<WeekCalendarView> {
   }
 
   Widget _buildWeekGrid(DateTime startOfWeek) {
-    final hourHeight = 60.0;
+    const hourHeight = 60.0;
 
     return SingleChildScrollView(
       controller: _scrollController,
@@ -171,17 +178,15 @@ class _WeekCalendarViewState extends State<WeekCalendarView> {
   }
 
   List<Widget> _buildSchedules(double hourHeight, DateTime startOfWeek) {
-    const double scheduleFontSize = 16;
-
+    const double scheduleFontSize = 16.0;
     List<Widget> widgets = [];
 
     for (var schedule in widget.schedules) {
-      DateTime sDate = DateUtils.dateOnly(schedule['date'] as DateTime);
-      int dayIndex = sDate.difference(startOfWeek).inDays; // ★補正済みstartOfWeekを基準にインデックス計算
-
+      final sDate = DateUtils.dateOnly(schedule.date);
+      final dayIndex = sDate.difference(startOfWeek).inDays;
       if (dayIndex >= 0 && dayIndex < 7) {
-        final double top = (schedule['startHour'] as double) * hourHeight * _scale;
-        final double height = ((schedule['endHour'] as double) - (schedule['startHour'] as double)) * hourHeight * _scale;
+        final double top = schedule.startHour * hourHeight * _scale;
+        final double height = (schedule.endHour - schedule.startHour) * hourHeight * _scale;
         widgets.add(Positioned(
           top: top,
           left: 50 + dayIndex * ((MediaQuery.of(context).size.width - 50) / 7),
@@ -190,16 +195,16 @@ class _WeekCalendarViewState extends State<WeekCalendarView> {
           child: Container(
             margin: const EdgeInsets.all(1),
             decoration: BoxDecoration(
-              color: schedule['color'],
+              color: schedule.color,
               borderRadius: BorderRadius.circular(4),
             ),
             child: Padding(
               padding: const EdgeInsets.all(2),
               child: Text(
-                schedule['title'],
+                schedule.title,
                 style: TextStyle(
                   fontSize: scheduleFontSize,
-                  color: (schedule['color'] as Color).computeLuminance() < 0.5 ? Colors.white : Colors.black,
+                  color: schedule.color.computeLuminance() < 0.5 ? Colors.white : Colors.black,
                 ),
                 overflow: TextOverflow.ellipsis,
               ),

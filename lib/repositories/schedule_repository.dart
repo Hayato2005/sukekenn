@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sukekenn/models/schedule_model.dart';
 
 class ScheduleRepository {
@@ -33,7 +34,6 @@ class ScheduleRepository {
     return _scheduleMap[dateKey] ?? [];
   }
 
-  /// 例: 月表示用に1ヶ月分をまとめて取得
   List<Schedule> getSchedulesForMonth(DateTime month) {
     final start = DateTime(month.year, month.month, 1);
     final end = DateTime(month.year, month.month + 1, 0);
@@ -43,7 +43,6 @@ class ScheduleRepository {
         .toList();
   }
 
-  /// 例: 週表示用に1週間分をまとめて取得
   List<Schedule> getSchedulesForWeek(DateTime startOfWeek) {
     final endOfWeek = startOfWeek.add(const Duration(days: 6));
     return _scheduleMap.entries
@@ -52,11 +51,31 @@ class ScheduleRepository {
         .toList();
   }
 
-  /// 2年分など広範囲の読み込みにも対応できるよう拡張想定
   List<Schedule> getSchedulesForRange(DateTime start, DateTime end) {
     return _scheduleMap.entries
         .where((entry) => entry.key.isAfter(start.subtract(const Duration(days: 1))) && entry.key.isBefore(end.add(const Duration(days: 1))))
         .expand((entry) => entry.value)
         .toList();
+  }
+
+  Future<void> saveSchedules(List<Schedule> schedules) async {
+    final prefs = await SharedPreferences.getInstance();
+    final schedulesJson = jsonEncode(schedules.map((s) => s.toJson()).toList());
+    await prefs.setString('schedules', schedulesJson);
+  }
+
+  Future<List<Schedule>> loadSchedules() async {
+    final prefs = await SharedPreferences.getInstance();
+    final schedulesJson = prefs.getString('schedules');
+    final List<Schedule> loadedSchedules = [];
+    if (schedulesJson != null) {
+      final decoded = jsonDecode(schedulesJson) as List<dynamic>;
+      for (final scheduleMap in decoded) {
+        final schedule = Schedule.fromJson(scheduleMap as Map<String, dynamic>);
+        addSchedule(schedule);
+        loadedSchedules.add(schedule);
+      }
+    }
+    return loadedSchedules;
   }
 }

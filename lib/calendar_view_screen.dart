@@ -5,6 +5,8 @@ import 'package:sukekenn/presentation/widgets/week_calendar_view.dart';
 import 'package:sukekenn/presentation/pages/calendar/widgets/app_drawer.dart';
 import 'package:sukekenn/schedule_creation_sheet.dart';
 import 'package:sukekenn/filter_dialog.dart';
+import 'package:sukekenn/models/schedule_model.dart';
+import 'package:sukekenn/repositories/schedule_repository.dart';
 
 enum CalendarDisplayMode { month, week }
 
@@ -19,13 +21,13 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
   CalendarDisplayMode _displayMode = CalendarDisplayMode.month;
   DateTime _focusedDate = DateTime.now();
   bool _isSelectionMode = false;
-  final List<Map<String, dynamic>> _selectedSchedules = [];
+  final List<Schedule> _selectedSchedules = [];
   bool _showTodayButton = false;
 
   late PageController _monthPageController;
   late PageController _weekPageController;
 
-  List<Map<String, dynamic>> _schedules = []; // ★追加：予定データ管理
+  List<Schedule> _schedules = [];
 
   static const int initialPageOffset = 5000;
 
@@ -34,6 +36,12 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
     super.initState();
     _monthPageController = PageController(initialPage: initialPageOffset);
     _weekPageController = PageController(initialPage: initialPageOffset);
+    _loadSchedules();
+  }
+
+  Future<void> _loadSchedules() async {
+    final loaded = await ScheduleRepository().loadSchedules();
+    setState(() => _schedules = loaded);
   }
 
   @override
@@ -119,10 +127,10 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
     }
   }
 
-  void _onScheduleSaved(Map<String, dynamic> schedule) {
-    setState(() {
-      _schedules.add(schedule);
-    });
+  Future<void> _onScheduleSaved(Schedule schedule) async {
+    final updatedSchedules = [..._schedules, schedule];
+    await ScheduleRepository().saveSchedules(updatedSchedules);
+    setState(() => _schedules = updatedSchedules);
   }
 
   @override
@@ -144,20 +152,21 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
             selectedSchedules: _selectedSchedules,
             onSelectionChanged: (schedule) {
               setState(() {
-                if (_selectedSchedules.any((s) => s['id'] == schedule['id'])) {
-                  _selectedSchedules.removeWhere((s) => s['id'] == schedule['id']);
+                final idx = _selectedSchedules.indexWhere((s) => s.id == schedule.id);
+                if (idx >= 0) {
+                  _selectedSchedules.removeAt(idx);
                 } else {
                   _selectedSchedules.add(schedule);
                 }
               });
             },
-            schedules: _schedules, // ★追加：予定リストを渡す
+            schedules: _schedules,
           ),
           WeekCalendarView(
             pageController: _weekPageController,
             onPageChanged: _onWeekPageChanged,
             focusedDate: _focusedDate,
-            schedules: _schedules, // ★追加：予定リストを渡す
+            schedules: _schedules,
           ),
         ],
       ),
@@ -167,14 +176,13 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
   }
 
   PreferredSizeWidget _buildAppBar() {
-    String title = "";
-    if (_displayMode == CalendarDisplayMode.month) {
-      title = DateFormat('yyyy年 M月', 'ja').format(_focusedDate);
-    } else {
-      final startOfWeek = _focusedDate.subtract(Duration(days: _focusedDate.weekday % 7));
-      final weekOfMonth = ((startOfWeek.day - 1) / 7).floor() + 1;
-      title = '${DateFormat('yyyy年 M月', 'ja').format(startOfWeek)} 第$weekOfMonth週';
-    }
+    String title = _displayMode == CalendarDisplayMode.month
+        ? DateFormat('yyyy年 M月', 'ja').format(_focusedDate)
+        : (() {
+            final startOfWeek = _focusedDate.subtract(Duration(days: _focusedDate.weekday % 7));
+            final weekOfMonth = ((startOfWeek.day - 1) / 7).floor() + 1;
+            return '${DateFormat('yyyy年 M月', 'ja').format(startOfWeek)} 第$weekOfMonth週';
+          })();
 
     return AppBar(
       leading: IconButton(
@@ -231,15 +239,15 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
                   child: FloatingActionButton(
                     heroTag: 'add_button',
                     onPressed: () => showModalBottomSheet(
-                        context: context,
-                        isScrollControlled: true,
-                        builder: (context) => DraggableScrollableSheet(
-                            initialChildSize: 0.9,
-                            builder: (_, controller) => ScheduleCreationSheet(
-                              controller: controller,
-                              onSave: _onScheduleSaved, // ★追加：保存時に予定を追加
-                            )
-                        )
+                      context: context,
+                      isScrollControlled: true,
+                      builder: (context) => DraggableScrollableSheet(
+                        initialChildSize: 0.9,
+                        builder: (_, controller) => ScheduleCreationSheet(
+                          controller: controller,
+                          onSave: _onScheduleSaved,
+                        ),
+                      ),
                     ),
                     child: const Icon(Icons.add),
                   ),
