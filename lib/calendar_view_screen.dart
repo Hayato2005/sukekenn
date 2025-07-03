@@ -1,5 +1,3 @@
-// lib/calendar_view_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:sukekenn/presentation/widgets/month_calendar_view.dart';
@@ -27,7 +25,8 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
   late PageController _monthPageController;
   late PageController _weekPageController;
 
-  // ★★★ 修正点：元のファイルに倣い、固定オフセットを基準にする
+  List<Map<String, dynamic>> _schedules = []; // ★追加：予定データ管理
+
   static const int initialPageOffset = 5000;
 
   @override
@@ -47,20 +46,15 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
   void _setDisplayMode(CalendarDisplayMode mode) {
     if (mounted) {
       setState(() => _displayMode = mode);
-      if(Navigator.canPop(context)) Navigator.of(context).pop();
+      if (Navigator.canPop(context)) Navigator.of(context).pop();
     }
   }
 
-  // ★★★ 修正点：ダブルタップ時のページ計算ロジックを全面的に見直し
   void _onDateDoubleTapped(DateTime date) {
     final now = DateTime.now();
-    // 今日の週の開始日 (元のコードに合わせて月曜始まりで計算)
     final startOfWeekToday = now.subtract(Duration(days: now.weekday - 1));
-    // ターゲット日の週の開始日
     final startOfWeekTarget = date.subtract(Duration(days: date.weekday - 1));
-    // 週の差分を計算
     final weekDifference = DateUtils.dateOnly(startOfWeekTarget).difference(DateUtils.dateOnly(startOfWeekToday)).inDays ~/ 7;
-    
     final targetWeekPage = initialPageOffset + weekDifference;
 
     setState(() {
@@ -79,8 +73,7 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
       });
     }
   }
-  
-  // ★★★ 修正点：週のページ変更の計算もオフセット基準に修正
+
   void _onWeekPageChanged(int page) {
     final now = DateTime.now();
     final startOfWeekToday = now.subtract(Duration(days: now.weekday - 1));
@@ -111,7 +104,6 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
     });
   }
 
-  // 年月ピッカー（元のコードから移植・改良）
   void _showYearMonthPicker() async {
     final DateTime? picked = await showDatePicker(
       context: context,
@@ -125,6 +117,12 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
       final monthDifference = (picked.year - now.year) * 12 + picked.month - now.month;
       _monthPageController.jumpToPage(initialPageOffset + monthDifference);
     }
+  }
+
+  void _onScheduleSaved(Map<String, dynamic> schedule) {
+    setState(() {
+      _schedules.add(schedule);
+    });
   }
 
   @override
@@ -153,11 +151,13 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
                 }
               });
             },
+            schedules: _schedules, // ★追加：予定リストを渡す
           ),
           WeekCalendarView(
             pageController: _weekPageController,
             onPageChanged: _onWeekPageChanged,
             focusedDate: _focusedDate,
+            schedules: _schedules, // ★追加：予定リストを渡す
           ),
         ],
       ),
@@ -177,10 +177,18 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
     }
 
     return AppBar(
+      leading: IconButton(
+        icon: Icon(_displayMode == CalendarDisplayMode.month ? Icons.view_week : Icons.calendar_view_month),
+        onPressed: () {
+          _setDisplayMode(_displayMode == CalendarDisplayMode.month
+              ? CalendarDisplayMode.week
+              : CalendarDisplayMode.month);
+        },
+      ),
       title: Center(
         child: GestureDetector(
-            onTap: _showYearMonthPicker,
-            child: Text(title),
+          onTap: _showYearMonthPicker,
+          child: Text(title),
         ),
       ),
       actions: [
@@ -200,15 +208,10 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
   }
 
   Widget? _buildFloatingActionButtons() {
-    // アプリ概要：月表示では予定追加FABは非表示。元のコードにはあったが、UX改善として仕様書を優先。
-    final isAddButtonVisible = _displayMode == CalendarDisplayMode.week && !_isSelectionMode;
+    final isAddButtonVisible = (_displayMode == CalendarDisplayMode.week || _displayMode == CalendarDisplayMode.month) && !_isSelectionMode;
 
     return Stack(
       children: [
-        // 今日へ戻るボタン
-        // ... (省略)
-
-        // フィルターと追加ボタン
         Positioned(
           bottom: 0,
           right: 0,
@@ -232,7 +235,12 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
                         isScrollControlled: true,
                         builder: (context) => DraggableScrollableSheet(
                             initialChildSize: 0.9,
-                            builder: (_, controller) => ScheduleCreationSheet(controller: controller))),
+                            builder: (_, controller) => ScheduleCreationSheet(
+                              controller: controller,
+                              onSave: _onScheduleSaved, // ★追加：保存時に予定を追加
+                            )
+                        )
+                    ),
                     child: const Icon(Icons.add),
                   ),
                 ),
@@ -243,9 +251,8 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
       ],
     );
   }
-  
+
   Widget _buildActionBar() {
-    // 元の`buildActionBar`を移植
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
       color: Colors.grey[200],

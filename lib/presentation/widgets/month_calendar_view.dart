@@ -1,5 +1,3 @@
-// lib/presentation/widgets/month_calendar_view.dart
-
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -10,6 +8,7 @@ class MonthCalendarView extends StatelessWidget {
   final bool isSelectionMode;
   final List<Map<String, dynamic>> selectedSchedules;
   final Function(Map<String, dynamic>) onSelectionChanged;
+  final List<Map<String, dynamic>> schedules;
 
   const MonthCalendarView({
     super.key,
@@ -19,22 +18,8 @@ class MonthCalendarView extends StatelessWidget {
     required this.isSelectionMode,
     required this.selectedSchedules,
     required this.onSelectionChanged,
+    required this.schedules,
   });
-
-  // 元のコードのダミーデータ生成ロジックを再現
-  List<Map<String, dynamic>> _getFakeSchedulesForDate(DateTime date) {
-    if (date.day % 4 == 0) return [];
-    return List.generate(
-      date.day % 3 + 1,
-      (i) => {
-        'id': '${date.millisecondsSinceEpoch}-$i',
-        'title': '予定${i + 1}',
-        'color': i == 0 ? const Color(0xFFCFB53B) : i == 1 ? const Color(0xFF004080) : const Color(0xFFAA2455),
-        'startHour': 8 + i * 2,
-        'endHour': 9 + i * 2,
-      },
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -69,7 +54,6 @@ class MonthCalendarView extends StatelessWidget {
     );
   }
 
-  // ★★★ 元のコードの Column/Row レイアウトを忠実に再現 ★★★
   Widget _buildMonthGrid(BuildContext context, DateTime month) {
     final firstDayOfMonth = DateTime(month.year, month.month, 1);
     final firstWeekday = firstDayOfMonth.weekday % 7;
@@ -86,25 +70,27 @@ class MonthCalendarView extends StatelessWidget {
               DateTime date;
               bool isCurrentMonth = true;
 
-              if (dayNum < 1) { // 前月の日付
+              if (dayNum < 1) {
                 final prevMonth = DateTime(month.year, month.month, 0);
                 date = DateTime(prevMonth.year, prevMonth.month, prevMonth.day + dayNum);
                 isCurrentMonth = false;
-              } else if (dayNum > daysInMonth) { // 次月の日付
+              } else if (dayNum > daysInMonth) {
                 date = DateTime(month.year, month.month + 1, dayNum - daysInMonth);
                 isCurrentMonth = false;
-              } else { // 今月の日付
+              } else {
                 date = DateTime(month.year, month.month, dayNum);
               }
 
-              final schedules = isCurrentMonth ? _getFakeSchedulesForDate(date) : <Map<String, dynamic>>[];
+              final daySchedules = schedules.where((s) {
+                final sDate = DateUtils.dateOnly(s['date'] as DateTime);
+                return DateUtils.isSameDay(sDate, date);
+              }).toList();
 
               return Expanded(
                 child: GestureDetector(
-                  onLongPress: isCurrentMonth ? () => _showDayTimeline(context, date, schedules) : null,
+                  onLongPress: isCurrentMonth ? () => _showDayTimeline(context, date, daySchedules) : null,
                   onDoubleTap: isCurrentMonth ? () => onDateDoubleTapped(date) : null,
-                  onTap: isCurrentMonth ? () { /* TODO: シングルタップ時のポップアップ */ } : null,
-                  child: _buildDateCell(date, schedules, isCurrentMonth),
+                  child: _buildDateCell(date, daySchedules, isCurrentMonth),
                 ),
               );
             }),
@@ -113,8 +99,7 @@ class MonthCalendarView extends StatelessWidget {
       }),
     );
   }
-  
-  // 元の`buildDateCell`のロジックを再現
+
   Widget _buildDateCell(DateTime date, List<Map<String, dynamic>> schedules, bool isCurrentMonth) {
     final isToday = DateUtils.isSameDay(date, DateTime.now());
     return Container(
@@ -140,8 +125,9 @@ class MonthCalendarView extends StatelessWidget {
     );
   }
 
-  // 元の`buildScheduleItems`と選択ロジックを再現
   List<Widget> _buildScheduleItems(List<Map<String, dynamic>> schedules) {
+    const double scheduleFontSize = 16; // ★予定タイトルの共通文字サイズ
+
     List<Widget> items = schedules.map((schedule) {
       final bool isSelected = selectedSchedules.any((s) => s['id'] == schedule['id']);
       final bgColor = schedule['color'] as Color;
@@ -157,7 +143,7 @@ class MonthCalendarView extends StatelessWidget {
             borderRadius: BorderRadius.circular(2),
             border: isSelected ? Border.all(color: Colors.blueAccent, width: 2) : null,
           ),
-          child: Text(schedule['title'], style: TextStyle(fontSize: 9, color: textColor), overflow: TextOverflow.ellipsis),
+          child: Text(schedule['title'], style: TextStyle(fontSize: scheduleFontSize, color: textColor), overflow: TextOverflow.ellipsis),
         ),
       );
     }).toList();
@@ -167,77 +153,76 @@ class MonthCalendarView extends StatelessWidget {
     }
     return items;
   }
-  
-  // 元の`showDayTimeline`をそのまま移植
-  void _showDayTimeline(BuildContext context, DateTime date, List<Map<String, dynamic>> schedules) {
-      final double initialHourHeight = 28.75;
-      ValueNotifier<double> scaleNotifier = ValueNotifier(1.0);
 
-      showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-              title: Text('${DateFormat('M月d日').format(date)}の予定'),
-              contentPadding: const EdgeInsets.all(0),
-              content: SizedBox(
-                  width: MediaQuery.of(context).size.width * 0.9,
-                  height: MediaQuery.of(context).size.height * 0.6,
-                  child: ValueListenableBuilder<double>(
-                      valueListenable: scaleNotifier,
-                      builder: (context, scale, _) {
-                          return GestureDetector(
-                              onScaleUpdate: (details) {
-                                  double newScale = (scale * details.scale).clamp(0.5, 4.0);
-                                  scaleNotifier.value = newScale;
-                              },
-                              child: SingleChildScrollView(
-                                  child: SizedBox(
-                                      height: 25 * initialHourHeight * scale,
-                                      child: Stack(
-                                          children: [
-                                              ...List.generate(
-                                                  25,
-                                                  (hour) => Positioned(
-                                                      top: hour * initialHourHeight * scale,
-                                                      left: 0,
-                                                      right: 0,
-                                                      child: Row(
-                                                          children: [
-                                                              SizedBox(width: 50, child: Text('${hour.toString().padLeft(2, '0')}:00', style: TextStyle(fontSize: 12 / scale, color: Colors.grey))),
-                                                              Expanded(child: Container(height: 1, color: Colors.grey.shade300)),
-                                                          ],
-                                                      ),
-                                                  )),
-                                              ...schedules.map((s) => Positioned(
-                                                  top: s['startHour'] * initialHourHeight * scale,
-                                                  left: 50,
-                                                  right: 0,
-                                                  height: (s['endHour'] - s['startHour']) * initialHourHeight * scale,
-                                                  child: Container(
-                                                      margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                                      decoration: BoxDecoration(color: s['color'], borderRadius: BorderRadius.circular(4)),
-                                                      padding: const EdgeInsets.all(4),
-                                                      child: Text('${s['title']} (ユーザー)',
-                                                          style: TextStyle(
-                                                              color: (s['color'] as Color).computeLuminance() < 0.5 ? Colors.white : Colors.black,
-                                                              fontSize: 10 / scale),
-                                                          overflow: TextOverflow.ellipsis),
-                                                  ),
-                                              )),
-                                          ],
-                                      ),
-                                  ),
-                              ),
-                          );
-                      },
-                  ),
-              ),
-              actions: [
-                  TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('閉じる'),
-                  ),
-              ],
-          ),
-      );
+  void _showDayTimeline(BuildContext context, DateTime date, List<Map<String, dynamic>> schedules) {
+    final double initialHourHeight = 28.75;
+    ValueNotifier<double> scaleNotifier = ValueNotifier(1.0);
+
+    showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+            title: Text('${DateFormat('M月d日').format(date)}の予定'),
+            contentPadding: const EdgeInsets.all(0),
+            content: SizedBox(
+                width: MediaQuery.of(context).size.width * 0.9,
+                height: MediaQuery.of(context).size.height * 0.6,
+                child: ValueListenableBuilder<double>(
+                    valueListenable: scaleNotifier,
+                    builder: (context, scale, _) {
+                        return GestureDetector(
+                            onScaleUpdate: (details) {
+                                double newScale = (scale * details.scale).clamp(0.5, 4.0);
+                                scaleNotifier.value = newScale;
+                            },
+                            child: SingleChildScrollView(
+                                child: SizedBox(
+                                    height: 25 * initialHourHeight * scale,
+                                    child: Stack(
+                                        children: [
+                                            ...List.generate(
+                                                25,
+                                                (hour) => Positioned(
+                                                    top: hour * initialHourHeight * scale,
+                                                    left: 0,
+                                                    right: 0,
+                                                    child: Row(
+                                                        children: [
+                                                            SizedBox(width: 50, child: Text('${hour.toString().padLeft(2, '0')}:00', style: TextStyle(fontSize: 12 / scale, color: Colors.grey))),
+                                                            Expanded(child: Container(height: 1, color: Colors.grey.shade300)),
+                                                        ],
+                                                    ),
+                                                )),
+                                            ...schedules.map((s) => Positioned(
+                                                top: s['startHour'] * initialHourHeight * scale,
+                                                left: 50,
+                                                right: 0,
+                                                height: (s['endHour'] - s['startHour']) * initialHourHeight * scale,
+                                                child: Container(
+                                                    margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                                    decoration: BoxDecoration(color: s['color'], borderRadius: BorderRadius.circular(4)),
+                                                    padding: const EdgeInsets.all(4),
+                                                    child: Text('${s['title']} (ユーザー)',
+                                                        style: TextStyle(
+                                                            color: (s['color'] as Color).computeLuminance() < 0.5 ? Colors.white : Colors.black,
+                                                            fontSize: 10 / scale),
+                                                        overflow: TextOverflow.ellipsis),
+                                                ),
+                                            )),
+                                        ],
+                                    ),
+                                ),
+                            ),
+                        );
+                    },
+                ),
+            ),
+            actions: [
+                TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('閉じる'),
+                ),
+            ],
+        ),
+    );
   }
 }
