@@ -9,13 +9,13 @@ class Schedule {
   final double startHour;
   final double endHour;
   final Color color;
+  final bool isAllDay;
 
-  // --- 仕様書に基づき追加したフィールド ---
   final String? description;
-  final String? scheduleType; // "空き日程" or "固定予定"
-  final String? matchingType; // "誰でも", "異性", "フレンド"
-  final String? location; // 場所
-  final List<String>? participants; // 参加者のIDリストなど
+  final String? scheduleType;
+  final String? matchingType;
+  final String? location;
+  final List<String>? participants;
 
   Schedule({
     required this.id,
@@ -24,13 +24,43 @@ class Schedule {
     required this.startHour,
     required this.endHour,
     required this.color,
-    // --- 追加フィールドをコンストラクタに追加 ---
+    this.isAllDay = false,
     this.description,
     this.scheduleType,
     this.matchingType,
     this.location,
     this.participants,
   });
+
+  Schedule copyWith({
+    String? id,
+    String? title,
+    DateTime? date,
+    double? startHour,
+    double? endHour,
+    Color? color,
+    bool? isAllDay,
+    String? description,
+    String? scheduleType,
+    String? matchingType,
+    String? location,
+    List<String>? participants,
+  }) {
+    return Schedule(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      date: date ?? this.date,
+      startHour: startHour ?? this.startHour,
+      endHour: endHour ?? this.endHour,
+      color: color ?? this.color,
+      isAllDay: isAllDay ?? this.isAllDay,
+      description: description ?? this.description,
+      scheduleType: scheduleType ?? this.scheduleType,
+      matchingType: matchingType ?? this.matchingType,
+      location: location ?? this.location,
+      participants: participants ?? this.participants,
+    );
+  }
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -39,7 +69,7 @@ class Schedule {
     'startHour': startHour,
     'endHour': endHour,
     'color': color.value,
-    // --- 追加フィールドをJSONに変換 ---
+    'isAllDay': isAllDay,
     'description': description,
     'scheduleType': scheduleType,
     'matchingType': matchingType,
@@ -54,7 +84,7 @@ class Schedule {
     startHour: (json['startHour'] as num).toDouble(),
     endHour: (json['endHour'] as num).toDouble(),
     color: Color(json['color'] as int),
-    // --- JSONから追加フィールドを読み込み ---
+    isAllDay: json['isAllDay'] as bool? ?? false,
     description: json['description'] as String?,
     scheduleType: json['scheduleType'] as String?,
     matchingType: json['matchingType'] as String?,
@@ -62,22 +92,6 @@ class Schedule {
     participants: json['participants'] != null ? List<String>.from(json['participants']) : null,
   );
 
-  /// UI表示用にMapへ変換
-  Map<String, dynamic> toMap() => {
-    'id': id,
-    'title': title,
-    'date': date,
-    'startHour': startHour,
-    'endHour': endHour,
-    'color': color,
-    'description': description,
-    'scheduleType': scheduleType,
-    'matchingType': matchingType,
-    'location': location,
-    'participants': participants,
-  };
-
-  /// 空のスケジュールを返す
   factory Schedule.empty() => Schedule(
     id: '',
     title: '',
@@ -85,10 +99,5 @@ class Schedule {
     startHour: 0,
     endHour: 0,
     color: Colors.transparent,
-    description: '',
-    scheduleType: '固定予定',
-    matchingType: 'フレンド',
-    location: '',
-    participants: [],
   );
 }
