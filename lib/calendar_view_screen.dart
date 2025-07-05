@@ -12,7 +12,6 @@ import 'package:sukekenn/filter_dialog.dart';
 import 'dart:math';
 
 enum CalendarDisplayMode { month, week }
-enum CreationMode { quick, full }
 
 class CalendarViewScreen extends StatefulWidget {
   const CalendarViewScreen({super.key});
@@ -35,12 +34,10 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
   late PageController _weekPageController;
   static const int initialPageOffset = 5000;
 
-  Schedule? _temporarySchedule;
-  bool _isCreatingSchedule = false;
-  CreationMode _creationMode = CreationMode.quick;
-  final DraggableScrollableController _sheetController = DraggableScrollableController();
-
-  bool _isDraggingOnGrid = false;
+  // ScheduleCreationSheet表示関連
+  Schedule? _editingSchedule;
+  PersistentBottomSheetController? _quickModeSheetController;
+  int _weekViewId = 0;
 
   @override
   void initState() {
@@ -48,16 +45,17 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
     _monthPageController = PageController(initialPage: initialPageOffset);
     _weekPageController = PageController(initialPage: initialPageOffset);
     _loadSchedules();
+    _checkIfTodayButtonNeeded();
   }
 
   @override
   void dispose() {
     _monthPageController.dispose();
     _weekPageController.dispose();
-    _sheetController.dispose();
     super.dispose();
   }
 
+  // --- データ操作メソッド ---
   Future<void> _loadSchedules() async {
     await _repo.loadSchedules();
     _updateScheduleMap();
@@ -77,7 +75,8 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
     _repo.removeSchedule(scheduleId);
     await _persistChanges();
   }
-   Future<void> _removeMultipleSchedules(List<String> ids) async {
+
+  Future<void> _removeMultipleSchedules(List<String> ids) async {
     for (var id in ids) {
       _repo.removeSchedule(id);
     }
@@ -100,89 +99,169 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
     });
   }
 
-  void _onGridTappedInWeekView(DateTime tappedTime) {
-    if (_isCreatingSchedule || _isSelectionMode) return;
-    setState(() {
-      _creationMode = CreationMode.quick;
-      final tappedHour = tappedTime.hour + tappedTime.minute / 60.0;
-      _temporarySchedule = Schedule.empty().copyWith(
-        id: 'temporary_schedule_${DateTime.now().millisecondsSinceEpoch}',
-        title: '',
-        date: tappedTime,
-        startHour: tappedHour - 0.5,
-        endHour: tappedHour + 0.5,
-        color: Colors.orange.withOpacity(0.8),
-      );
-      _isCreatingSchedule = true;
-    });
-  }
-
-  void _onTemporaryScheduleUpdated(Schedule updatedTemporarySchedule) {
-    setState(() {
-      _temporarySchedule = updatedTemporarySchedule;
-    });
-  }
-
-  void _onCreationSheetClosed({Schedule? savedSchedule, bool isDeleted = false}) async {
-    if (isDeleted) {
-       if (_temporarySchedule != null) {
-         await _removeSchedule(_temporarySchedule!.id);
-       }
-    }
-    else if (savedSchedule != null) {
-      if (savedSchedule.id.startsWith('temporary')) {
-         await _addSchedule(savedSchedule.copyWith(id: DateTime.now().millisecondsSinceEpoch.toString()));
-      }
-      else {
-        await _updateSchedule(savedSchedule);
-      }
-    }
-    setState(() {
-      _isCreatingSchedule = false;
-      _temporarySchedule = null;
-    });
-  }
-
-  void _onScheduleSelectionChanged(Schedule schedule) {
-    setState(() {
-        if (_selectedScheduleIds.contains(schedule.id)) {
-            _selectedScheduleIds.remove(schedule.id);
-        } else {
-            _selectedScheduleIds.add(schedule.id);
-        }
-    });
-  }
+  // --- UIイベントハンドラ ---
 
   void _onScheduleTapped(Schedule schedule) async {
-    if (schedule.id.startsWith('temporary')) return;
+    if (_isQuickModeSheetOpen()) return;
     if (_isSelectionMode) {
-      _onScheduleSelectionChanged(schedule);
+      setState(() {
+        if (_selectedScheduleIds.contains(schedule.id)) {
+          _selectedScheduleIds.remove(schedule.id);
+        } else {
+          _selectedScheduleIds.add(schedule.id);
+        }
+      });
       return;
     }
+
     final result = await showScheduleDetailPopup(context, schedule);
     if (result == null) return;
+
     if (result == 'edit') {
-      setState(() {
-        _creationMode = CreationMode.full;
-        _temporarySchedule = schedule;
-        _isCreatingSchedule = true;
-      });
+      _showFullCreationSheet(schedule);
     } else if (result == 'deleted') {
       await _removeSchedule(schedule.id);
     }
   }
-
-  void _onFABTapped() {
+  
+  void _onTemporaryScheduleCreated(Schedule schedule) {
+    if (_isQuickModeSheetOpen()) {
+      _closeQuickModeSheet(resetWeekView: false);
+    }
     setState(() {
-      _creationMode = CreationMode.full;
-      _temporarySchedule = Schedule.empty().copyWith(id: 'temporary_schedule_${DateTime.now().millisecondsSinceEpoch}');
-      _isCreatingSchedule = true;
+      _editingSchedule = schedule;
+    });
+    _showQuickModeSheet(schedule);
+  }
+
+  void _onTemporaryScheduleUpdated(Schedule schedule) {
+    setState(() {
+      _editingSchedule = schedule;
     });
   }
 
+  void _onFABTapped() {
+    final now = DateTime.now();
+    final schedule = Schedule.empty().copyWith(
+      id: 'temporary_schedule_${now.millisecondsSinceEpoch}',
+      date: _focusedDate,
+      startHour: now.hour.toDouble(),
+      endHour: (now.hour + 1).toDouble(),
+    );
+    _showFullCreationSheet(schedule);
+  }
+
+  bool _isQuickModeSheetOpen() => _quickModeSheetController != null;
+
+  void _closeQuickModeSheet({bool resetWeekView = true}) {
+    _quickModeSheetController?.close();
+    _quickModeSheetController = null;
+    setState(() {
+      _editingSchedule = null;
+      if (resetWeekView) {
+        _weekViewId++;
+      }
+    });
+  }
+
+  void _showQuickModeSheet(Schedule schedule) {
+    _quickModeSheetController = Scaffold.of(context).showBottomSheet(
+      (context) => GestureDetector(
+        // ★★★★★ 修正点 ★★★★★
+        // パネル全体のドラッグを検知できるようにする
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          final currentSchedule = _editingSchedule ?? schedule;
+          _closeQuickModeSheet(resetWeekView: false);
+          _showFullCreationSheet(currentSchedule);
+        },
+        onVerticalDragUpdate: (details) {
+          if (details.primaryDelta != null && details.primaryDelta! < -1) {
+             final currentSchedule = _editingSchedule ?? schedule;
+            _closeQuickModeSheet(resetWeekView: false);
+            _showFullCreationSheet(currentSchedule);
+          }
+        },
+        child: ScheduleSheetHeader(
+          schedule: _editingSchedule ?? schedule,
+          onClose: ({isDeleted = false}) {
+            _closeQuickModeSheet();
+          },
+          onSave: (updatedSchedule) async {
+            await _addSchedule(updatedSchedule.copyWith(id: DateTime.now().millisecondsSinceEpoch.toString()));
+            _closeQuickModeSheet();
+          },
+        ),
+      ),
+      elevation: 8.0,
+      backgroundColor: Colors.transparent,
+    );
+
+    _quickModeSheetController!.closed.whenComplete(() {
+      if (_quickModeSheetController != null) {
+         _closeQuickModeSheet();
+      }
+    });
+  }
+  
+  void _showFullCreationSheet(Schedule schedule) async {
+    final result = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.9,
+          minChildSize: 0.5,
+          maxChildSize: 0.9,
+          expand: false,
+          builder: (BuildContext context, ScrollController scrollController) {
+            return ScheduleCreationSheet(
+              scrollController: scrollController,
+              schedule: schedule,
+            );
+          },
+        );
+      },
+    );
+
+    if (result != null) {
+       _handleSheetResult(result);
+    }
+    
+    // フルスクリーンシートが閉じた後、仮セルが残っていれば消す
+    setState(() {
+      _weekViewId++;
+    });
+  }
+  
+  void _handleSheetResult(Map<String, dynamic> result) async {
+    final savedSchedule = result['savedSchedule'] as Schedule?;
+    final isDeleted = result['isDeleted'] as bool?;
+    final originalId = result['originalId'] as String?;
+
+    if (isDeleted == true) {
+      if(originalId != null && !originalId.startsWith('temporary')) {
+        await _removeSchedule(originalId);
+      }
+    } else if (savedSchedule != null) {
+      if(originalId != null && originalId.startsWith('temporary')) {
+        await _addSchedule(savedSchedule.copyWith(id: DateTime.now().millisecondsSinceEpoch.toString()));
+      } else {
+        await _updateSchedule(savedSchedule);
+      }
+    }
+  }
+
+
+  // --- ナビゲーションと表示モード関連 ---
+
   void _setDisplayMode(CalendarDisplayMode mode) {
     if (!mounted) return;
-    setState(() { _displayMode = mode; });
+    setState(() { 
+      _displayMode = mode; 
+      _checkIfTodayButtonNeeded(); 
+    });
   }
 
   void _onDateDoubleTappedInMonthView(DateTime date) {
@@ -191,12 +270,15 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
     final startOfWeekTarget = date.subtract(Duration(days: date.weekday % 7));
     final weekDifference = DateUtils.dateOnly(startOfWeekTarget).difference(DateUtils.dateOnly(startOfWeekToday)).inDays ~/ 7;
     final targetWeekPage = initialPageOffset + weekDifference;
+    
     setState(() {
       _displayMode = CalendarDisplayMode.week;
       _focusedDate = date;
     });
+    
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if(_weekPageController.hasClients) _weekPageController.jumpToPage(targetWeekPage);
+      _checkIfTodayButtonNeeded();
     });
   }
 
@@ -219,6 +301,21 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
       _checkIfTodayButtonNeeded();
     });
   }
+  
+  void _onWeekHeaderTapped(DateTime date) {
+    final monthOffset = (date.year - DateTime.now().year) * 12 + date.month - DateTime.now().month;
+    final targetMonthPage = initialPageOffset + monthOffset;
+    
+    setState(() {
+      _displayMode = CalendarDisplayMode.month;
+      _focusedDate = date;
+    });
+    
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if(_monthPageController.hasClients) _monthPageController.jumpToPage(targetMonthPage);
+      _checkIfTodayButtonNeeded();
+    });
+  }
 
   void _checkIfTodayButtonNeeded() {
      final now = DateTime.now();
@@ -236,19 +333,21 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
   }
 
   void _returnToToday() {
-    _focusedDate = DateTime.now();
-    _monthPageController.jumpToPage(initialPageOffset);
-    _weekPageController.jumpToPage(initialPageOffset);
-    _checkIfTodayButtonNeeded();
+    if (_displayMode == CalendarDisplayMode.month) {
+      _monthPageController.jumpToPage(initialPageOffset);
+    } else {
+      _weekPageController.jumpToPage(initialPageOffset);
+    }
   }
 
   void _showYearMonthWeekPicker() async {
+     // TODO: 仕様書にあるピッカーを実装
      final DateTime? picked = await showDatePicker(
       context: context, initialDate: _focusedDate,
       firstDate: DateTime(2000), lastDate: DateTime(2100),
       locale: const Locale('ja'),
     );
-     if (picked != null && picked != _focusedDate) {
+     if (picked != null && !DateUtils.isSameDay(picked, _focusedDate)) {
         if (_displayMode == CalendarDisplayMode.month) {
             final now = DateTime.now();
             final monthDifference = (picked.year - now.year) * 12 + picked.month - now.month;
@@ -263,113 +362,35 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
     }
   }
 
+  // --- ビルドメソッド ---
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: _buildAppBar(),
-      body: Stack(
-        children: [
-          IndexedStack(
+      body: Builder(
+        builder: (context) {
+          return IndexedStack(
             index: _displayMode.index,
             children: [
               _buildMonthView(),
               _buildWeekView(),
             ],
-          ),
-          if (_isCreatingSchedule && !_isDraggingOnGrid)
-            // ★★★ シート表示位置のバグを修正 ★★★
-            // `expand` プロパティを `true` に戻して、シートが親（Stack）のサイズに追従するようにする
-            DraggableScrollableSheet(
-              controller: _sheetController,
-              initialChildSize: _creationMode == CreationMode.quick ? 0.25 : 0.9,
-              minChildSize: 0.15,
-              maxChildSize: 0.9,
-              expand: true, // このプロパティが重要
-              builder: (BuildContext context, ScrollController scrollController) {
-                return ScheduleCreationSheet(
-                  key: ValueKey(_temporarySchedule?.id),
-                  scrollController: scrollController,
-                  schedule: _temporarySchedule ?? Schedule.empty().copyWith(date: _focusedDate),
-                  onClose: _onCreationSheetClosed,
-                );
-              },
-            ),
-        ],
-      ),
-      floatingActionButton: _isCreatingSchedule ? null : _buildFloatingActionButtons(),
-      bottomSheet: _isSelectionMode ? _buildSelectionActionBar() : null,
-    );
-  }
-
-  Widget _buildMonthView() {
-      final schedulesForMonth = _allSchedulesMap.values.where((s) {
-        return s.date.year == _focusedDate.year && s.date.month == _focusedDate.month;
-      }).toList();
-      final selectedSchedulesForMonthView = schedulesForMonth
-              .where((s) => _selectedScheduleIds.contains(s.id))
-              .toList();
-
-      return MonthCalendarView(
-        pageController: _monthPageController,
-        onPageChanged: _onMonthPageChanged,
-        onDateDoubleTapped: _onDateDoubleTappedInMonthView,
-        isSelectionMode: _isSelectionMode,
-        schedules: schedulesForMonth,
-        selectedSchedules: selectedSchedulesForMonthView,
-        onSelectionChanged: _onScheduleSelectionChanged,
-      );
-  }
-
-  Widget _buildWeekView() {
-    return PageView.builder(
-      controller: _weekPageController,
-      onPageChanged: _onWeekPageChanged,
-      itemBuilder: (context, index) {
-        final weekOffset = index - initialPageOffset;
-        final now = DateTime.now();
-        final startOfWeekToday = now.subtract(Duration(days: now.weekday % 7));
-        final startOfWeek = DateUtils.dateOnly(startOfWeekToday).add(Duration(days: weekOffset * 7));
-        final endOfWeek = startOfWeek.add(const Duration(days: 7));
-
-        final schedulesForWeek = _allSchedulesMap.values.where((s) {
-            return !s.date.isBefore(startOfWeek) && s.date.isBefore(endOfWeek);
-        }).toList();
-
-        final schedulesToShow = [...schedulesForWeek];
-        if (_temporarySchedule != null) {
-          final tempStartOfWeek = _temporarySchedule!.date.subtract(Duration(days: _temporarySchedule!.date.weekday % 7));
-          if (DateUtils.isSameDay(tempStartOfWeek, startOfWeek)) {
-            schedulesToShow.removeWhere((s) => s.id == _temporarySchedule!.id);
-            schedulesToShow.add(_temporarySchedule!);
-          }
+          );
         }
-
-        return WeekCalendarView(
-          key: ValueKey(startOfWeek.toIso8601String()),
-          startOfWeek: startOfWeek,
-          schedules: schedulesToShow,
-          onGridTapped: _onGridTappedInWeekView,
-          onScheduleTapped: _onScheduleTapped,
-          onScheduleUpdated: _updateSchedule,
-          onTemporaryScheduleUpdated: _onTemporaryScheduleUpdated,
-          isSelectionMode: _isSelectionMode,
-          selectedScheduleIds: _selectedScheduleIds,
-          onDragStart: () { if(mounted) setState(() => _isDraggingOnGrid = true); },
-          onDragEnd: () { if(mounted) setState(() => _isDraggingOnGrid = false); },
-        );
-      },
+      ),
+      floatingActionButton: _isQuickModeSheetOpen() ? null : _buildFloatingActionButtons(),
     );
   }
-
 
   PreferredSizeWidget _buildAppBar() {
     String title;
     if (_displayMode == CalendarDisplayMode.month) {
         title = DateFormat('yyyy年 M月', 'ja').format(_focusedDate);
     } else {
-        final startOfWeek = _focusedDate.subtract(Duration(days: _focusedDate.weekday % 7));
-        int weekNumber = (startOfWeek.day / 7).ceil();
-        title = "${DateFormat('yyyy年 M月', 'ja').format(_focusedDate)} 第$weekNumber週";
+        final dayOfYear = int.parse(DateFormat("D").format(_focusedDate));
+        final weekOfYear = (dayOfYear / 7).ceil();
+        title = "${DateFormat('yyyy年 M月', 'ja').format(_focusedDate)} 第${weekOfYear}週";
     }
 
     return AppBar(
@@ -402,6 +423,66 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
     );
   }
 
+  Widget _buildMonthView() {
+      final monthDate = DateTime(_focusedDate.year, _focusedDate.month);
+      final schedulesForMonth = _allSchedulesMap.values.where((s) {
+        return s.date.year == monthDate.year && s.date.month == monthDate.month;
+      }).toList();
+      final selectedSchedulesForMonthView = schedulesForMonth
+              .where((s) => _selectedScheduleIds.contains(s.id))
+              .toList();
+
+      return MonthCalendarView(
+        pageController: _monthPageController,
+        onPageChanged: _onMonthPageChanged,
+        onDateDoubleTapped: _onDateDoubleTappedInMonthView,
+        isSelectionMode: _isSelectionMode,
+        schedules: schedulesForMonth,
+        selectedSchedules: selectedSchedulesForMonthView,
+        onSelectionChanged: (schedule) => _onScheduleTapped(schedule),
+        onScheduleTapped: (schedule) => _onScheduleTapped(schedule),
+      );
+  }
+
+  Widget _buildWeekView() {
+    return PageView.builder(
+      controller: _weekPageController,
+      onPageChanged: _onWeekPageChanged,
+      itemBuilder: (context, index) {
+        final weekOffset = index - initialPageOffset;
+        final now = DateTime.now();
+        final startOfWeekToday = now.subtract(Duration(days: now.weekday % 7));
+        final startOfWeek = DateUtils.dateOnly(startOfWeekToday).add(Duration(days: weekOffset * 7));
+        final endOfWeek = startOfWeek.add(const Duration(days: 7));
+
+        final schedulesForWeek = _allSchedulesMap.values.where((s) {
+            return !s.date.isBefore(startOfWeek) && s.date.isBefore(endOfWeek);
+        }).toList();
+
+        return WeekCalendarView(
+          key: ValueKey('${startOfWeek.toIso8601String()}_$_weekViewId'),
+          startOfWeek: startOfWeek,
+          schedules: schedulesForWeek,
+          onScheduleTapped: _onScheduleTapped,
+          onScheduleCreated: (newSchedule) => _addSchedule(newSchedule),
+          onScheduleUpdated: (updatedSchedule) => _updateSchedule(updatedSchedule),
+          onWeekHeaderTapped: _onWeekHeaderTapped,
+          onPageRequested: (direction) {
+            if (direction < 0) {
+              _weekPageController.previousPage(duration: const Duration(milliseconds: 300), curve: Curves.ease);
+            } else {
+              _weekPageController.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.ease);
+            }
+          },
+          onTemporaryScheduleCreated: _onTemporaryScheduleCreated,
+          onTemporaryScheduleUpdated: _onTemporaryScheduleUpdated,
+          isSelectionMode: _isSelectionMode,
+          selectedScheduleIds: _selectedScheduleIds,
+        );
+      },
+    );
+  }
+
   Widget? _buildFloatingActionButtons() {
     return Stack(
       children: [
@@ -413,6 +494,8 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
               heroTag: 'today_button',
               onPressed: _returnToToday,
               tooltip: '今日に戻る',
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.black,
               child: const Icon(Icons.today),
             ),
           ),
@@ -439,45 +522,6 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildSelectionActionBar() {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
-      decoration: BoxDecoration(
-        color: Theme.of(context).bottomAppBarTheme.color,
-        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0,-2))],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          TextButton.icon(
-            icon: const Icon(Icons.delete_outline),
-            label: const Text('削除'),
-            onPressed: _selectedScheduleIds.isEmpty
-              ? null
-              : () async {
-                  final confirm = await showDialog<bool>(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: Text('${_selectedScheduleIds.length}件の予定を削除'),
-                      content: const Text('選択した予定を完全に削除しますか？この操作は元に戻せません。'),
-                      actions: [
-                        TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('キャンセル')),
-                        TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('削除', style: TextStyle(color: Colors.red))),
-                      ],
-                    )
-                  );
-                  if (confirm ?? false) {
-                     await _removeMultipleSchedules(_selectedScheduleIds);
-                  }
-                },
-          ),
-          TextButton.icon(icon: const Icon(Icons.share_outlined), label: const Text('共有'), onPressed: _selectedScheduleIds.isEmpty ? null : () {}),
-          TextButton.icon(icon: const Icon(Icons.group_add_outlined), label: const Text('招待'), onPressed: _selectedScheduleIds.isEmpty ? null : () {}),
-        ],
-      ),
     );
   }
 }
