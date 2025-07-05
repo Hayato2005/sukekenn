@@ -1,6 +1,5 @@
-// lib/presentation/widgets/week_calendar_view.dart
-
 import 'dart:async';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:sukekenn/models/schedule_model.dart';
@@ -13,12 +12,16 @@ class WeekCalendarView extends StatefulWidget {
   final DateTime startOfWeek;
   final List<Schedule> schedules;
   final Function(Schedule) onScheduleTapped;
-  final Function(Schedule) onScheduleCreated;
   final Function(Schedule) onScheduleUpdated;
   final Function(DateTime) onWeekHeaderTapped;
   final Function(int) onPageRequested;
+  
+  final Schedule? temporarySchedule;
   final Function(Schedule) onTemporaryScheduleCreated;
   final Function(Schedule) onTemporaryScheduleUpdated;
+  final VoidCallback onTemporaryScheduleCleared;
+
+
   final bool isSelectionMode;
   final List<String> selectedScheduleIds;
   
@@ -27,12 +30,13 @@ class WeekCalendarView extends StatefulWidget {
     required this.startOfWeek,
     required this.schedules,
     required this.onScheduleTapped,
-    required this.onScheduleCreated,
     required this.onScheduleUpdated,
     required this.onWeekHeaderTapped,
     required this.onPageRequested,
+    this.temporarySchedule,
     required this.onTemporaryScheduleCreated,
     required this.onTemporaryScheduleUpdated,
+    required this.onTemporaryScheduleCleared,
     this.isSelectionMode = false,
     this.selectedScheduleIds = const [],
   });
@@ -45,18 +49,20 @@ class _WeekCalendarViewState extends State<WeekCalendarView> {
   late final ScrollController _scrollController;
   final GlobalKey _gridKey = GlobalKey();
 
-  double _hourHeight = 60.0;
+  final double _hourHeight = 60.0;
   final double _leftColumnWidth = 50.0;
   final double _headerHeight = 60.0;
   final double _allDayAreaHeight = 30.0;
 
   // --- 状態管理 ---
-  Schedule? _temporarySchedule; 
   Schedule? _draggingSchedule;
   Offset? _dragStartOffset;
   Schedule? _ghostAtOriginalPosition;
   
   DragMode _dragMode = DragMode.none;
+  DateTime? _dragGuideTime;
+  Offset _panStartOffsetInSchedule = Offset.zero;
+
 
   // --- オートスクロール関連 ---
   Timer? _vScrollTimer;
@@ -64,7 +70,6 @@ class _WeekCalendarViewState extends State<WeekCalendarView> {
   DateTime? _lastHScrollTime;
 
   Timer? _timeIndicatorTimer;
-  DateTime? _dragGuideTime;
 
   @override
   void initState() {
@@ -96,14 +101,14 @@ class _WeekCalendarViewState extends State<WeekCalendarView> {
     return snappedTotalMinutes / 60.0;
   }
 
-  DateTime? _offsetToDateTime(Offset localPosition) {
+  DateTime? _offsetToDateTime(Offset positionInGrid) {
     final RenderBox? gridBox = _gridKey.currentContext?.findRenderObject() as RenderBox?;
     if (gridBox == null) return null;
 
     final dayColumnWidth = (gridBox.size.width - _leftColumnWidth) / 7;
     
-    final dx = localPosition.dx.clamp(_leftColumnWidth, gridBox.size.width);
-    final dy = localPosition.dy.clamp(0, gridBox.size.height);
+    final dx = positionInGrid.dx.clamp(_leftColumnWidth, gridBox.size.width);
+    final dy = positionInGrid.dy; 
 
     final int dayIndex = ((dx - _leftColumnWidth) / dayColumnWidth).floor().clamp(0, 6);
     final date = widget.startOfWeek.add(Duration(days: dayIndex));
@@ -118,7 +123,7 @@ class _WeekCalendarViewState extends State<WeekCalendarView> {
 
   // --- ジェスチャーハンドリング ---
   void _onTapUp(TapUpDetails details) {
-    if (widget.isSelectionMode || _temporarySchedule != null || _draggingSchedule != null) return;
+    if (widget.isSelectionMode || widget.temporarySchedule != null || _draggingSchedule != null) return;
     
     final RenderBox? gridBox = _gridKey.currentContext?.findRenderObject() as RenderBox?;
     if (gridBox == null) return;
@@ -129,29 +134,23 @@ class _WeekCalendarViewState extends State<WeekCalendarView> {
     final tappedDateTime = _offsetToDateTime(adjustedPosition);
     if (tappedDateTime == null) return;
     
-    // ★★★★★ 修正点 ★★★★★
-    // タップした時刻を中心とするように、開始時刻を30分前に設定
     final tappedHour = tappedDateTime.hour + tappedDateTime.minute / 60.0;
     final centeredStartHour = _snapToMinutes(tappedHour - 0.5, 15);
     
     final tempSchedule = Schedule.empty().copyWith(
       id: 'temporary_schedule_${DateTime.now().millisecondsSinceEpoch}',
-      title: '', // 最初はタイトルなし
+      title: '', 
       color: Colors.amber,
-      date: tappedDateTime,
+      date: DateUtils.dateOnly(tappedDateTime),
       startHour: centeredStartHour.clamp(0.0, 23.0),
       endHour: (centeredStartHour + 1.0).clamp(1.0, 24.0),
     );
-
-    setState(() {
-      _temporarySchedule = tempSchedule;
-    });
 
     widget.onTemporaryScheduleCreated(tempSchedule);
   }
 
   void _onLongPressStart(LongPressStartDetails details) {
-    if (widget.isSelectionMode || _temporarySchedule != null) return;
+    if (widget.isSelectionMode || widget.temporarySchedule != null) return;
     
     final RenderBox? gridBox = _gridKey.currentContext?.findRenderObject() as RenderBox?;
     if (gridBox == null) return;
@@ -200,16 +199,19 @@ class _WeekCalendarViewState extends State<WeekCalendarView> {
     final newDateTime = _offsetToDateTime(adjustedPosition);
     if (newDateTime == null) return;
     
+    final newStartHourClamped = newStartHourSnapped.clamp(0.0, 24.0 - duration);
+    
     setState(() {
-      _dragGuideTime = newDateTime.copyWith(
-          hour: newStartHourSnapped.floor(),
-          minute: ((newStartHourSnapped - newStartHourSnapped.floor()) * 60).round()
-      );
-
       _draggingSchedule = _ghostAtOriginalPosition!.copyWith(
-        date: newDateTime,
-        startHour: newStartHourSnapped.clamp(0.0, 24.0 - duration),
-        endHour: (newStartHourSnapped + duration).clamp(duration, 24.0),
+        date: DateUtils.dateOnly(newDateTime),
+        startHour: newStartHourClamped,
+        endHour: newStartHourClamped + duration,
+      );
+      // ★★★★★ 修正点 ★★★★★
+      // 点線ガイドの時刻を確実に更新
+      _dragGuideTime = newDateTime.copyWith(
+          hour: newStartHourClamped.floor(),
+          minute: ((newStartHourClamped - newStartHourClamped.floor()) * 60).round()
       );
     });
   }
@@ -231,10 +233,12 @@ class _WeekCalendarViewState extends State<WeekCalendarView> {
   }
   
   Rect? _getScheduleRect(Schedule schedule, Size gridSize) {
-    final dayColumnWidth = (gridSize.width - _leftColumnWidth) / 7;
-    final dayIndex = schedule.date.weekday % 7;
+    if (schedule.date == null) return null;
 
-    final dailySchedules = widget.schedules.where((s) => DateUtils.isSameDay(s.date, schedule.date) && !s.isAllDay).toList();
+    final dayColumnWidth = (gridSize.width - _leftColumnWidth) / 7;
+    final dayIndex = schedule.date!.weekday % 7; 
+
+    final dailySchedules = widget.schedules.where((s) => s.date != null && DateUtils.isSameDay(s.date, schedule.date) && !s.isAllDay).toList();
     final layoutColumns = _calculateLayoutColumns(dailySchedules);
     int colIndex = -1;
     int colCount = 1;
@@ -254,7 +258,7 @@ class _WeekCalendarViewState extends State<WeekCalendarView> {
     final top = schedule.startHour * _hourHeight;
     final height = (schedule.endHour - schedule.startHour) * _hourHeight;
     
-    return Rect.fromLTWH(left, top, eventWidth, height);
+    return Rect.fromLTWH(left, top, eventWidth, height.clamp(0, double.infinity));
   }
 
   // --- オートスクロール ---
@@ -265,7 +269,6 @@ class _WeekCalendarViewState extends State<WeekCalendarView> {
     final x = globalPosition.dx;
     final y = globalPosition.dy;
     
-    // 縦方向
     const vScrollThreshold = 80.0;
     const vScrollSpeed = 10.0;
     final headerTotalHeight = _headerHeight + _allDayAreaHeight + 1;
@@ -277,11 +280,10 @@ class _WeekCalendarViewState extends State<WeekCalendarView> {
       _stopVScroll();
     }
     
-    // 横方向
     final dayColumnWidth = (view.size.width - _leftColumnWidth) / 7;
     final rightTriggerAreaStart = _leftColumnWidth + (dayColumnWidth * 6.5);
 
-    if (x < _leftColumnWidth) {
+    if (x < _leftColumnWidth + 20) {
       _startHScroll(-1);
     } else if (x > rightTriggerAreaStart) {
       _startHScroll(1);
@@ -306,20 +308,13 @@ class _WeekCalendarViewState extends State<WeekCalendarView> {
   }
 
   void _startHScroll(int direction) {
-    if(direction == -1) { // 左スクロール
       if (_hScrollTimer?.isActive ?? false) return;
       if (_lastHScrollTime != null && DateTime.now().difference(_lastHScrollTime!) < const Duration(seconds: 1)) {
         return;
       }
       _lastHScrollTime = DateTime.now();
       widget.onPageRequested(direction);
-      _hScrollTimer = Timer(const Duration(milliseconds: 100), () => _hScrollTimer = null);
-    } else { // 右スクロール
-      if (_hScrollTimer?.isActive ?? false) return;
-      _hScrollTimer = Timer(const Duration(seconds: 2), () {
-        widget.onPageRequested(direction);
-      });
-    }
+      _hScrollTimer = Timer(const Duration(seconds: 1), () => _hScrollTimer = null);
   }
 
   void _stopHScroll() {
@@ -331,57 +326,86 @@ class _WeekCalendarViewState extends State<WeekCalendarView> {
     _stopHScroll();
   }
   
-  // --- 仮予定の操作 ---
+  // ★★★★★ 修正点 ★★★★★
+  // --- 仮予定の操作 (ロジックを全面的に見直し、正常に動作するように修正) ---
+  void _onTemporaryPanStart(DragStartDetails details) {
+    final baseSchedule = widget.temporarySchedule;
+    if (baseSchedule == null) return;
+    
+    final localY = details.localPosition.dy;
+    final height = (baseSchedule.endHour - baseSchedule.startHour) * _hourHeight;
+    const handleSize = 25.0; // 当たり判定を広めに
+
+    if (localY < handleSize) { 
+        setState(() => _dragMode = DragMode.resizeTop);
+    } else if (localY > height - handleSize) {
+        setState(() => _dragMode = DragMode.resizeBottom);
+    } else {
+        setState(() => _dragMode = DragMode.move);
+        _panStartOffsetInSchedule = details.localPosition;
+    }
+  }
+
   void _onTemporaryPanUpdate(DragUpdateDetails details) {
-    if (_temporarySchedule == null) return;
+    final baseSchedule = widget.temporarySchedule;
+    if (baseSchedule == null || _dragMode == DragMode.none) return;
+    
+    // 将来のオートスクロール機能のために、既存のドラッグと同じ処理を呼ぶ
+    _handleAutoScroll(details.globalPosition);
     
     final RenderBox? gridBox = _gridKey.currentContext?.findRenderObject() as RenderBox?;
     if (gridBox == null) return;
-    
-    final localY = gridBox.globalToLocal(details.globalPosition).dy + _scrollController.offset;
-    final currentHour = (localY / _hourHeight).clamp(0.0, 24.0);
-    final snappedHour = _snapToMinutes(currentHour, 15);
 
+    final localPosition = gridBox.globalToLocal(details.globalPosition);
+    final adjustedPosition = Offset(localPosition.dx, localPosition.dy + _scrollController.offset);
+    
     Schedule? newTempSchedule;
+
     if (_dragMode == DragMode.move) {
-      final duration = _temporarySchedule!.endHour - _temporarySchedule!.startHour;
-      newTempSchedule = _temporarySchedule!.copyWith(
-        startHour: snappedHour,
-        endHour: (snappedHour + duration).clamp(0.0, 24.0),
-      );
-    } else if (_dragMode == DragMode.resizeTop) {
-      if (snappedHour < _temporarySchedule!.endHour) {
-        newTempSchedule = _temporarySchedule!.copyWith(startHour: snappedHour);
-      }
-    } else if (_dragMode == DragMode.resizeBottom) {
-      if (snappedHour > _temporarySchedule!.startHour) {
-        newTempSchedule = _temporarySchedule!.copyWith(endHour: snappedHour);
-      }
+        final currentY = adjustedPosition.dy - _panStartOffsetInSchedule.dy;
+        final newStartHour = _snapToMinutes(currentY / _hourHeight, 15);
+        final duration = baseSchedule.endHour - baseSchedule.startHour;
+        
+        newTempSchedule = baseSchedule.copyWith(
+          startHour: newStartHour.clamp(0.0, 24.0 - duration),
+          endHour: (newStartHour + duration).clamp(duration, 24.0),
+        );
+    } else { // resizeTop or resizeBottom
+        final currentHour = _snapToMinutes(adjustedPosition.dy / _hourHeight, 15);
+        if (_dragMode == DragMode.resizeTop) {
+            if (currentHour < baseSchedule.endHour - 0.25) {
+                newTempSchedule = baseSchedule.copyWith(startHour: currentHour);
+            }
+        } else { // resizeBottom
+            if (currentHour > baseSchedule.startHour + 0.25) {
+                newTempSchedule = baseSchedule.copyWith(endHour: currentHour);
+            }
+        }
     }
 
     if (newTempSchedule != null) {
-        setState(() {
-            _temporarySchedule = newTempSchedule;
-            _dragGuideTime = newTempSchedule!.date.copyWith(
-                hour: newTempSchedule.startHour.floor(),
-                minute: ((newTempSchedule.startHour - newTempSchedule.startHour.floor()) * 60).round()
-            );
-        });
-        widget.onTemporaryScheduleUpdated(newTempSchedule!);
+        final guideTimeHour = _dragMode == DragMode.resizeBottom ? newTempSchedule.endHour : newTempSchedule.startHour;
+        final currentGuideDate = newTempSchedule.date;
+
+        if (currentGuideDate != null) {
+            setState(() {
+                _dragGuideTime = currentGuideDate.copyWith(
+                    hour: guideTimeHour.floor(),
+                    minute: ((guideTimeHour - guideTimeHour.floor()) * 60).round()
+                );
+            });
+        }
+        widget.onTemporaryScheduleUpdated(newTempSchedule);
     }
   }
 
   void _onTemporaryPanEnd(DragEndDetails details) {
-    if (_temporarySchedule != null) {
-      if (_temporarySchedule!.endHour - _temporarySchedule!.startHour < 0.25) {
-        setState(() => _temporarySchedule = null);
-        return;
-      }
-    }
     setState(() {
       _dragMode = DragMode.none;
       _dragGuideTime = null;
+      _panStartOffsetInSchedule = Offset.zero;
     });
+    _stopAllAutoScroll();
   }
   
   // --- ビルドメソッド ---
@@ -422,8 +446,8 @@ class _WeekCalendarViewState extends State<WeekCalendarView> {
                         _buildGhostScheduleBlock(_ghostAtOriginalPosition!, constraints.biggest, isOriginalPosition: true),
                       if (_draggingSchedule != null)
                          _buildGhostScheduleBlock(_draggingSchedule!, constraints.biggest, isOriginalPosition: false),
-                      if (_temporarySchedule != null)
-                        _buildTemporaryScheduleBlock(_temporarySchedule!, constraints.biggest),
+                      if (widget.temporarySchedule != null)
+                        _buildTemporaryScheduleBlock(widget.temporarySchedule!, constraints.biggest),
                       _buildTimeIndicator(constraints.biggest),
                     ],
                   );
@@ -500,7 +524,7 @@ class _WeekCalendarViewState extends State<WeekCalendarView> {
       decoration: BoxDecoration(
         border: Border(top: BorderSide(color: Colors.grey.shade200))
       ),
-      child: Center(child: Text("終日", style: TextStyle(color: Colors.grey, fontSize: 12))),
+      child: const Center(child: Text("終日", style: TextStyle(color: Colors.grey, fontSize: 12))),
     );
   }
 
@@ -518,7 +542,7 @@ class _WeekCalendarViewState extends State<WeekCalendarView> {
             child: Transform.translate(
               offset: const Offset(0, -7),
               child: Text(
-                hour == 0 ? '' : '${hour}',
+                hour == 0 ? '' : '$hour',
                 style: TextStyle(fontSize: 12, color: Colors.grey[600]),
               ),
             ),
@@ -574,8 +598,9 @@ class _WeekCalendarViewState extends State<WeekCalendarView> {
     if(isOriginalPosition) {
         rect = _getScheduleRect(schedule, gridSize);
     } else {
+        if (schedule.date == null) return const SizedBox.shrink();
         final dayColumnWidth = (gridSize.width - _leftColumnWidth) / 7;
-        final dayIndex = schedule.date.weekday % 7;
+        final dayIndex = schedule.date!.weekday % 7;
         final left = _leftColumnWidth + (dayIndex * dayColumnWidth);
         final top = schedule.startHour * _hourHeight;
         final height = (schedule.endHour - schedule.startHour) * _hourHeight;
@@ -611,8 +636,9 @@ class _WeekCalendarViewState extends State<WeekCalendarView> {
   }
   
   Widget _buildTemporaryScheduleBlock(Schedule schedule, Size gridSize) {
+    if (schedule.date == null) return const SizedBox.shrink();
     final dayColumnWidth = (gridSize.width - _leftColumnWidth) / 7;
-    final dayIndex = schedule.date.weekday % 7;
+    final dayIndex = schedule.date!.weekday % 7;
     final top = schedule.startHour * _hourHeight;
     final height = (schedule.endHour - schedule.startHour) * _hourHeight;
     final left = _leftColumnWidth + (dayIndex * dayColumnWidth);
@@ -623,16 +649,8 @@ class _WeekCalendarViewState extends State<WeekCalendarView> {
       width: dayColumnWidth,
       height: height.clamp(0, double.infinity),
       child: GestureDetector(
-        onPanStart: (details) {
-            final localY = details.localPosition.dy;
-            if (localY < 15 && height > 30) { 
-                _dragMode = DragMode.resizeTop;
-            } else if (localY > height - 15 && height > 30) {
-                _dragMode = DragMode.resizeBottom;
-            } else {
-                _dragMode = DragMode.move;
-            }
-        },
+        behavior: HitTestBehavior.opaque,
+        onPanStart: _onTemporaryPanStart,
         onPanUpdate: _onTemporaryPanUpdate,
         onPanEnd: _onTemporaryPanEnd,
         child: Container(
@@ -647,25 +665,33 @@ class _WeekCalendarViewState extends State<WeekCalendarView> {
             children: [
               Padding(
                 padding: const EdgeInsets.all(4.0),
-                child: Text(
-                  schedule.title,
-                  style: const TextStyle(fontSize: 12, color: Colors.white),
-                  overflow: TextOverflow.ellipsis,
+                child: Center(
+                  child: Text(
+                    schedule.title,
+                    style: const TextStyle(fontSize: 12, color: Colors.white),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ),
               Positioned(
                 top: -8, left: 0, right: 0,
                 child: Center(
-                  child: Container(width: 24, height: 16,
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade400))
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.resizeUpDown,
+                    child: Container(width: 24, height: 16,
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade400))
+                    ),
                   ),
                 ),
               ),
                Positioned(
                 bottom: -8, left: 0, right: 0,
                 child: Center(
-                  child: Container(width: 24, height: 16,
-                     decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade400))
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.resizeUpDown,
+                    child: Container(width: 24, height: 16,
+                       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade400))
+                    ),
                   ),
                 ),
               ),
@@ -733,8 +759,7 @@ class _WeekGridPainter extends CustomPainter {
     if (dragGuideTime != null) {
         final guidePaint = Paint()
           ..color = Theme.of(context).primaryColor.withOpacity(0.7)
-          ..strokeWidth = 1.5
-          ..style = PaintingStyle.stroke;
+          ..strokeWidth = 1.5;
         
         final snappedHour = _snapToMinutes(((dragGuideTime!.hour + dragGuideTime!.minute / 60.0)), 15);
         final y = snappedHour * hourHeight;
@@ -742,23 +767,24 @@ class _WeekGridPainter extends CustomPainter {
         const dashWidth = 4;
         const dashSpace = 4;
         double startX = leftColumnWidth;
+        final path = Path();
         while (startX < size.width) {
-          canvas.drawLine(Offset(startX, y), Offset(startX + dashWidth, y), guidePaint);
+          path.moveTo(startX, y);
+          path.lineTo(startX + dashWidth, y);
           startX += dashWidth + dashSpace;
         }
+        canvas.drawPath(path, guidePaint);
 
-        final timeText = DateFormat('HH:mm').format(
-            DateTime(2000,1,1, snappedHour.floor(), ((snappedHour - snappedHour.floor()) * 60).round())
-        );
+        final timeText = DateFormat('HH:mm').format(dragGuideTime!);
         final textPainter = TextPainter(
             text: TextSpan(
                 text: timeText,
-                style: TextStyle(fontSize: 12, color: Colors.white, backgroundColor: Theme.of(context).primaryColor),
+                style: TextStyle(fontSize: 12, color: Colors.white, backgroundColor: Theme.of(context).primaryColor.withOpacity(0.9)),
             ),
             textDirection: ui.TextDirection.ltr,
         );
-        textPainter.layout();
-        textPainter.paint(canvas, Offset(0, y - textPainter.height / 2));
+        textPainter.layout(minWidth: 0, maxWidth: leftColumnWidth -4);
+        textPainter.paint(canvas, Offset(4, y - textPainter.height / 2));
     }
   }
 

@@ -1,21 +1,22 @@
-// lib/schedule_creation_sheet.dart
-
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:sukekenn/models/schedule_model.dart';
-import 'dart:async';
 
-// クイック登録モードで表示される、下から出てくる小さなパネル
+// クイック登録時に表示するヘッダー部分
 class ScheduleSheetHeader extends StatefulWidget {
   final Schedule schedule;
-  final Function({bool isDeleted}) onClose;
-  final Function(Schedule updatedSchedule) onSave;
+  final Function(String) onTitleChanged;
+  final VoidCallback onClose;
+  final VoidCallback onSave;
+  final VoidCallback onTapHeader;
 
   const ScheduleSheetHeader({
     super.key,
     required this.schedule,
+    required this.onTitleChanged,
     required this.onClose,
     required this.onSave,
+    required this.onTapHeader,
   });
 
   @override
@@ -23,86 +24,67 @@ class ScheduleSheetHeader extends StatefulWidget {
 }
 
 class _ScheduleSheetHeaderState extends State<ScheduleSheetHeader> {
-  late TextEditingController _titleController;
-  bool _isSaving = false;
-
+  late final TextEditingController _titleController;
+  final FocusNode _titleFocusNode = FocusNode();
+  
   @override
   void initState() {
     super.initState();
-    _updateTitle();
-    _titleController.addListener(() {
-      if(mounted) setState(() {});
-    });
+    _titleController = TextEditingController(text: widget.schedule.title);
   }
 
   @override
   void didUpdateWidget(covariant ScheduleSheetHeader oldWidget) {
-      super.didUpdateWidget(oldWidget);
-      if (widget.schedule.title != oldWidget.schedule.title) {
-        // 親ウィジェットから渡されるスケジュール情報が更新されたら、コントローラーも更新
-        if(_titleController.text != widget.schedule.title) {
-          _titleController.text = widget.schedule.title;
-        }
-      }
-  }
-  
-  void _updateTitle(){
-     _titleController = TextEditingController(text: widget.schedule.title);
+    super.didUpdateWidget(oldWidget);
+    if(widget.schedule.title != oldWidget.schedule.title && widget.schedule.title != _titleController.text) {
+      _titleController.text = widget.schedule.title;
+    }
   }
 
   @override
   void dispose() {
     _titleController.dispose();
+    _titleFocusNode.dispose();
     super.dispose();
-  }
-
-  void _save() {
-    if (_titleController.text.trim().isEmpty || _isSaving) return;
-    setState(() => _isSaving = true);
-    final updatedSchedule = widget.schedule.copyWith(title: _titleController.text.trim());
-    widget.onSave(updatedSchedule);
   }
 
   @override
   Widget build(BuildContext context) {
     return Material(
       elevation: 8,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       child: Container(
-        color: Theme.of(context).cardColor,
-        child: SafeArea(
-          top: false,
-          child: SizedBox(
-            height: kToolbarHeight + 10,
-            child: AppBar(
-              backgroundColor: Theme.of(context).cardColor,
-              elevation: 0,
-              automaticallyImplyLeading: false,
-              leading: IconButton(
-                icon: const Icon(Icons.close),
-                tooltip: '閉じる',
-                onPressed: () => widget.onClose(isDeleted: false),
-              ),
-              title: TextField(
-                controller: _titleController,
-                // ★★★★★ 修正点 ★★★★★
-                // autofocusを削除し、自動でキーボードが開かないようにする
-                // autofocus: true, 
-                decoration: const InputDecoration.collapsed(hintText: '予定のタイトル'),
-                textInputAction: TextInputAction.done,
-              ),
-              actions: [
-                Padding(
-                  padding: const EdgeInsets.only(right: 8.0),
-                  child: TextButton(
-                    onPressed: _titleController.text.trim().isEmpty || _isSaving ? null : _save,
-                    child: _isSaving
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Text('登録'),
-                  ),
-                )
-              ],
+        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+        height: kToolbarHeight + 10,
+        child: Row(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.close),
+              onPressed: widget.onClose,
             ),
-          ),
+            Expanded(
+              child: GestureDetector(
+                 onTap: widget.onTapHeader,
+                 child: AbsorbPointer(
+                   child: TextField(
+                     controller: _titleController,
+                     focusNode: _titleFocusNode,
+                     decoration: const InputDecoration.collapsed(hintText: '予定のタイトル'),
+                     onChanged: widget.onTitleChanged,
+                   ),
+                 ),
+              ),
+            ),
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: _titleController,
+              builder: (context, value, child) {
+                return TextButton(
+                  onPressed: value.text.trim().isEmpty ? null : widget.onSave,
+                  child: const Text('登録'),
+                );
+              },
+            ),
+          ],
         ),
       ),
     );
@@ -110,7 +92,7 @@ class _ScheduleSheetHeaderState extends State<ScheduleSheetHeader> {
 }
 
 
-// フル表示モードの本体
+// フル表示用のモーダルシート本体
 class ScheduleCreationSheet extends StatefulWidget {
   final Schedule schedule;
   final ScrollController scrollController;
@@ -136,83 +118,71 @@ class _ScheduleCreationSheetState extends State<ScheduleCreationSheet> {
     super.initState();
     _currentSchedule = widget.schedule;
     _titleController = TextEditingController(text: _currentSchedule.title);
-    _titleController.addListener(() {
-      if(mounted) setState(() {});
-    });
-  }
 
-  @override
-  void didUpdateWidget(covariant ScheduleCreationSheet oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.schedule != oldWidget.schedule) {
-      setState(() {
-        _currentSchedule = widget.schedule;
-        if(_titleController.text != _currentSchedule.title) {
-          _titleController.text = _currentSchedule.title;
-        }
-      });
+    // ★★★★★ 修正点 ★★★★★
+    // シートがドラッグで閉じられたことを検知するリスナー
+    widget.scrollController.addListener(_onScroll);
+  }
+  
+  // ★★★★★ 修正点 ★★★★★
+  void _onScroll() {
+    // DraggableScrollableSheetが下にドラッグされて閉じる寸前の挙動を検知
+    if (widget.scrollController.position.atEdge && widget.scrollController.position.pixels == 0) {
+      // isSwitchingToQuickModeフラグを立てて、編集中のデータを返す
+      final result = {
+        'isSwitchingToQuickMode': true,
+        'savedSchedule': _currentSchedule.copyWith(title: _titleController.text.trim()),
+      };
+      // 多重実行を防ぐためにリスナーを解除
+      widget.scrollController.removeListener(_onScroll);
+      Navigator.pop(context, result);
     }
   }
 
   @override
   void dispose() {
+    widget.scrollController.removeListener(_onScroll);
     _titleController.dispose();
     _titleFocusNode.dispose();
     super.dispose();
   }
-
-  void _close({Schedule? savedSchedule, bool isDeleted = false}) {
-    if (!mounted) return;
-    Navigator.of(context).pop({
-      'savedSchedule': savedSchedule,
-      'isDeleted': isDeleted,
-      'originalId': widget.schedule.id,
-    });
-  }
-
+  
   void _saveSchedule() async {
     if (_titleController.text.trim().isEmpty || _isSaving) return;
     setState(() => _isSaving = true);
-
     final finalSchedule = _currentSchedule.copyWith(title: _titleController.text.trim());
-
-    try {
-      await Future.delayed(const Duration(milliseconds: 500));
-      _close(savedSchedule: finalSchedule);
-    } catch (e) {
-      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('保存に失敗しました: $e')));
-      setState(() => _isSaving = false);
-    }
+    await Future.delayed(const Duration(milliseconds: 300));
+    if (mounted) Navigator.pop(context, {'savedSchedule': finalSchedule});
   }
 
   void _deleteSchedule() {
       showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('予定の削除'),
-        content: const Text('この予定を完全に削除しますか？'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('キャンセル')),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              _close(isDeleted: true);
-            },
-            child: const Text('削除', style: TextStyle(color: Colors.red))
-          ),
-        ],
-      )
-    );
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('予定の削除'),
+          content: const Text('この予定を完全に削除しますか？'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('キャンセル')),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                Navigator.pop(context, {'isDeleted': true, 'savedSchedule': _currentSchedule});
+              },
+              child: const Text('削除', style: TextStyle(color: Colors.red))
+            ),
+          ],
+        )
+      );
   }
   
   @override
   Widget build(BuildContext context) {
     return Material(
-      elevation: 8,
+      color: Theme.of(context).cardColor,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       clipBehavior: Clip.antiAlias,
       child: Scaffold(
-        backgroundColor: Theme.of(context).cardColor,
+        backgroundColor: Colors.transparent,
         body: CustomScrollView(
           controller: widget.scrollController,
           slivers: [
@@ -224,22 +194,30 @@ class _ScheduleCreationSheetState extends State<ScheduleCreationSheet> {
               leading: IconButton(
                 icon: const Icon(Icons.close),
                 tooltip: '閉じる',
-                onPressed: _close,
+                onPressed: () => Navigator.pop(context),
               ),
               title: TextField(
                 controller: _titleController,
                 focusNode: _titleFocusNode,
                 decoration: const InputDecoration.collapsed(hintText: '予定のタイトル'),
+                onChanged: (text) => setState(() {
+                   _currentSchedule = _currentSchedule.copyWith(title: text);
+                }),
                 textInputAction: TextInputAction.done,
               ),
               actions: [
                 Padding(
                   padding: const EdgeInsets.only(right: 8.0),
-                  child: TextButton(
-                    onPressed: _titleController.text.trim().isEmpty || _isSaving ? null : _saveSchedule,
-                    child: _isSaving 
-                      ? const SizedBox(width:20, height:20, child: CircularProgressIndicator(strokeWidth: 2,)) 
-                      : const Text('登録'),
+                  child: ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: _titleController,
+                    builder: (context, value, child) {
+                      return TextButton(
+                        onPressed: value.text.trim().isEmpty || _isSaving ? null : _saveSchedule,
+                        child: _isSaving 
+                          ? const SizedBox(width:20, height:20, child: CircularProgressIndicator(strokeWidth: 2,)) 
+                          : const Text('登録'),
+                      );
+                    },
                   ),
                 )
               ],
@@ -262,6 +240,7 @@ class _ScheduleCreationSheetState extends State<ScheduleCreationSheet> {
   }
 }
 
+
 // フル表示モードの詳細入力エリア
 class _FullDisplayContent extends StatelessWidget {
   final Schedule schedule;
@@ -274,8 +253,9 @@ class _FullDisplayContent extends StatelessWidget {
     required this.onDelete,
   });
   
-  DateTime _getDateTimeFromHour(double hour) {
+  DateTime? _getDateTimeFromHour(double hour) {
     final date = schedule.date;
+    if (date == null) return null;
     final baseDate = DateTime(date.year, date.month, date.day);
     return baseDate.add(Duration(minutes: (hour * 60).round()));
   }
@@ -287,10 +267,11 @@ class _FullDisplayContent extends StatelessWidget {
     bool isEditing = !schedule.id.startsWith('temporary');
 
     Future<void> pickStartTime() async {
+      if(startDateTime == null) return;
       final picked = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(startDateTime));
       if (picked != null) {
-        final duration = endDateTime.difference(startDateTime);
-        final newStartDateTime = DateTime(schedule.date.year, schedule.date.month, schedule.date.day, picked.hour, picked.minute);
+        final duration = endDateTime!.difference(startDateTime);
+        final newStartDateTime = DateTime(schedule.date!.year, schedule.date!.month, schedule.date!.day, picked.hour, picked.minute);
         final newEndDateTime = newStartDateTime.add(duration);
         onChanged(schedule.copyWith(
           startHour: newStartDateTime.hour + newStartDateTime.minute / 60.0,
@@ -300,9 +281,10 @@ class _FullDisplayContent extends StatelessWidget {
     }
 
     Future<void> pickEndTime() async {
+      if(endDateTime == null || startDateTime == null) return;
       final picked = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(endDateTime));
       if (picked != null) {
-        final newEndDateTime = DateTime(schedule.date.year, schedule.date.month, schedule.date.day, picked.hour, picked.minute);
+        final newEndDateTime = DateTime(schedule.date!.year, schedule.date!.month, schedule.date!.day, picked.hour, picked.minute);
         if (newEndDateTime.isBefore(startDateTime) || newEndDateTime.isAtSameMomentAs(startDateTime)) {
           if(context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('終了時刻は開始時刻より後に設定してください。')));
           return;
@@ -329,9 +311,9 @@ class _FullDisplayContent extends StatelessWidget {
           const Divider(),
           ListTile(
             leading: const Icon(Icons.calendar_today_outlined),
-            title: Text(DateFormat('y年M月d日 (E)', 'ja').format(schedule.date)),
+            title: Text(schedule.date != null ? DateFormat('y年M月d日 (E)', 'ja').format(schedule.date!) : '日付未設定'),
             onTap: () async {
-              final picked = await showDatePicker(context: context, initialDate: schedule.date, firstDate: DateTime(2000), lastDate: DateTime(2100));
+              final picked = await showDatePicker(context: context, initialDate: schedule.date ?? DateTime.now(), firstDate: DateTime(2000), lastDate: DateTime(2100));
               if (picked != null) onChanged(schedule.copyWith(date: picked));
             },
           ),
@@ -339,9 +321,9 @@ class _FullDisplayContent extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                TextButton(onPressed: pickStartTime, child: Text(DateFormat('HH:mm').format(startDateTime), style: Theme.of(context).textTheme.headlineSmall)),
+                TextButton(onPressed: pickStartTime, child: Text(startDateTime != null ? DateFormat('HH:mm').format(startDateTime) : '--:--', style: Theme.of(context).textTheme.headlineSmall)),
                 const Text('〜', style: TextStyle(fontSize: 20)),
-                TextButton(onPressed: pickEndTime, child: Text(DateFormat('HH:mm').format(endDateTime), style: Theme.of(context).textTheme.headlineSmall)),
+                TextButton(onPressed: pickEndTime, child: Text(endDateTime != null ? DateFormat('HH:mm').format(endDateTime) : '--:--', style: Theme.of(context).textTheme.headlineSmall)),
               ],
             ),
           CheckboxListTile(
