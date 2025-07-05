@@ -23,9 +23,8 @@ class CalendarViewScreen extends StatefulWidget {
 
 class _CalendarViewScreenState extends State<CalendarViewScreen> {
   final _repo = ScheduleRepository();
-  List<Schedule> _schedules = [];
+  Map<String, Schedule> _allSchedulesMap = {};
 
-  // --- UI状態管理 ---
   CalendarDisplayMode _displayMode = CalendarDisplayMode.week;
   DateTime _focusedDate = DateTime.now();
   bool _isSelectionMode = false;
@@ -36,12 +35,12 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
   late PageController _weekPageController;
   static const int initialPageOffset = 5000;
 
-  // --- 新規予定作成フローの状態 ---
   Schedule? _temporarySchedule;
   bool _isCreatingSchedule = false;
   CreationMode _creationMode = CreationMode.quick;
   final DraggableScrollableController _sheetController = DraggableScrollableController();
 
+  bool _isDraggingOnGrid = false;
 
   @override
   void initState() {
@@ -59,10 +58,9 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
     super.dispose();
   }
 
-  // === データ操作メソッド群 ===
   Future<void> _loadSchedules() async {
     await _repo.loadSchedules();
-    _updateScheduleList();
+    _updateScheduleMap();
   }
 
   Future<void> _addSchedule(Schedule schedule) async {
@@ -90,39 +88,29 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
     });
   }
 
-
   Future<void> _persistChanges() async {
-    final allSchedules = _repo.getSchedulesForRange(DateTime(2000), DateTime(2100));
-    await _repo.saveSchedules(allSchedules);
-    _updateScheduleList();
+    await _repo.saveSchedules(_allSchedulesMap.values.toList());
+    _updateScheduleMap();
   }
 
-  void _updateScheduleList() {
+  void _updateScheduleMap() {
     if (!mounted) return;
     setState(() {
-      if (_displayMode == CalendarDisplayMode.month) {
-        _schedules = _repo.getSchedulesForMonth(_focusedDate);
-      } else {
-        final startOfWeek = _focusedDate.subtract(Duration(days: _focusedDate.weekday % 7));
-        _schedules = _repo.getSchedulesForWeek(startOfWeek);
-      }
+      _allSchedulesMap = _repo.getAllSchedules();
     });
   }
 
-
-  // === UIイベントハンドラ群 ===
-
   void _onGridTappedInWeekView(DateTime tappedTime) {
     if (_isCreatingSchedule || _isSelectionMode) return;
-
     setState(() {
       _creationMode = CreationMode.quick;
+      final tappedHour = tappedTime.hour + tappedTime.minute / 60.0;
       _temporarySchedule = Schedule.empty().copyWith(
         id: 'temporary_schedule_${DateTime.now().millisecondsSinceEpoch}',
         title: '',
         date: tappedTime,
-        startHour: tappedTime.hour + tappedTime.minute / 60.0,
-        endHour: (tappedTime.hour + 1) + tappedTime.minute / 60.0,
+        startHour: tappedHour - 0.5,
+        endHour: tappedHour + 0.5,
         color: Colors.orange.withOpacity(0.8),
       );
       _isCreatingSchedule = true;
@@ -138,12 +126,10 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
   void _onCreationSheetClosed({Schedule? savedSchedule, bool isDeleted = false}) async {
     if (isDeleted) {
        if (_temporarySchedule != null) {
-         // 削除フラグがtrueなら、編集中だった予定を削除
          await _removeSchedule(_temporarySchedule!.id);
        }
     }
     else if (savedSchedule != null) {
-      // 新規保存 or 更新
       if (savedSchedule.id.startsWith('temporary')) {
          await _addSchedule(savedSchedule.copyWith(id: DateTime.now().millisecondsSinceEpoch.toString()));
       }
@@ -151,15 +137,12 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
         await _updateSchedule(savedSchedule);
       }
     }
-
-    // 状態をリセットしてシートを閉じる
     setState(() {
       _isCreatingSchedule = false;
       _temporarySchedule = null;
     });
   }
 
-  // month_calendar_view から呼び出される選択変更ハンドラ
   void _onScheduleSelectionChanged(Schedule schedule) {
     setState(() {
         if (_selectedScheduleIds.contains(schedule.id)) {
@@ -170,18 +153,14 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
     });
   }
 
-  // week_calendar_view や month_calendar_view 内の予定タップ時の統一処理
   void _onScheduleTapped(Schedule schedule) async {
     if (schedule.id.startsWith('temporary')) return;
-
     if (_isSelectionMode) {
       _onScheduleSelectionChanged(schedule);
       return;
     }
-
     final result = await showScheduleDetailPopup(context, schedule);
     if (result == null) return;
-
     if (result == 'edit') {
       setState(() {
         _creationMode = CreationMode.full;
@@ -204,7 +183,6 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
   void _setDisplayMode(CalendarDisplayMode mode) {
     if (!mounted) return;
     setState(() { _displayMode = mode; });
-    _updateScheduleList();
   }
 
   void _onDateDoubleTappedInMonthView(DateTime date) {
@@ -213,7 +191,6 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
     final startOfWeekTarget = date.subtract(Duration(days: date.weekday % 7));
     final weekDifference = DateUtils.dateOnly(startOfWeekTarget).difference(DateUtils.dateOnly(startOfWeekToday)).inDays ~/ 7;
     final targetWeekPage = initialPageOffset + weekDifference;
-
     setState(() {
       _displayMode = CalendarDisplayMode.week;
       _focusedDate = date;
@@ -228,7 +205,6 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
     if (!mounted) return;
     setState(() {
       _focusedDate = DateTime(DateTime.now().year, DateTime.now().month + monthOffset);
-      _updateScheduleList();
       _checkIfTodayButtonNeeded();
     });
   }
@@ -240,7 +216,6 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
       final now = DateTime.now();
       final startOfWeekToday = now.subtract(Duration(days: now.weekday % 7));
       _focusedDate = DateUtils.dateOnly(startOfWeekToday).add(Duration(days: weekOffset * 7));
-      _updateScheduleList();
       _checkIfTodayButtonNeeded();
     });
   }
@@ -255,7 +230,6 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
        final startOfWeekForNow = now.subtract(Duration(days: now.weekday % 7));
        needed = !DateUtils.isSameDay(startOfWeekForFocused, startOfWeekForNow);
      }
-
     if (_showTodayButton != needed) {
       if (mounted) setState(() => _showTodayButton = needed);
     }
@@ -265,7 +239,6 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
     _focusedDate = DateTime.now();
     _monthPageController.jumpToPage(initialPageOffset);
     _weekPageController.jumpToPage(initialPageOffset);
-    _updateScheduleList();
     _checkIfTodayButtonNeeded();
   }
 
@@ -290,18 +263,8 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
-    final displaySchedules = _temporarySchedule == null
-        ? [..._schedules]
-        : [..._schedules.where((s) => s.id != _temporarySchedule!.id), _temporarySchedule!];
-    
-    // MonthCalendarView に渡すために、選択中のIDリストからScheduleオブジェクトのリストを作成
-    final selectedSchedulesForMonthView = _schedules
-            .where((s) => _selectedScheduleIds.contains(s.id))
-            .toList();
-
     return Scaffold(
       appBar: _buildAppBar(),
       body: Stack(
@@ -309,38 +272,19 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
           IndexedStack(
             index: _displayMode.index,
             children: [
-              MonthCalendarView(
-                pageController: _monthPageController,
-                onPageChanged: _onMonthPageChanged,
-                onDateDoubleTapped: _onDateDoubleTappedInMonthView,
-                isSelectionMode: _isSelectionMode,
-                schedules: _schedules,
-                // --- month_calendar_view の仕様に合わせたプロパティを渡す ---
-                selectedSchedules: selectedSchedulesForMonthView,
-                onSelectionChanged: _onScheduleSelectionChanged,
-              ),
-              WeekCalendarView(
-                key: ValueKey('week_${_focusedDate.toIso8601String()}'),
-                pageController: _weekPageController,
-                onPageChanged: _onWeekPageChanged,
-                focusedDate: _focusedDate,
-                schedules: displaySchedules,
-                onGridTapped: _onGridTappedInWeekView,
-                onScheduleTapped: _onScheduleTapped,
-                onScheduleUpdated: _updateSchedule,
-                onTemporaryScheduleUpdated: _onTemporaryScheduleUpdated,
-                isSelectionMode: _isSelectionMode,
-                selectedScheduleIds: _selectedScheduleIds,
-              ),
+              _buildMonthView(),
+              _buildWeekView(),
             ],
           ),
-          if (_isCreatingSchedule)
+          if (_isCreatingSchedule && !_isDraggingOnGrid)
+            // ★★★ シート表示位置のバグを修正 ★★★
+            // `expand` プロパティを `true` に戻して、シートが親（Stack）のサイズに追従するようにする
             DraggableScrollableSheet(
               controller: _sheetController,
               initialChildSize: _creationMode == CreationMode.quick ? 0.25 : 0.9,
               minChildSize: 0.15,
               maxChildSize: 0.9,
-              expand: true,
+              expand: true, // このプロパティが重要
               builder: (BuildContext context, ScrollController scrollController) {
                 return ScheduleCreationSheet(
                   key: ValueKey(_temporarySchedule?.id),
@@ -356,6 +300,67 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
       bottomSheet: _isSelectionMode ? _buildSelectionActionBar() : null,
     );
   }
+
+  Widget _buildMonthView() {
+      final schedulesForMonth = _allSchedulesMap.values.where((s) {
+        return s.date.year == _focusedDate.year && s.date.month == _focusedDate.month;
+      }).toList();
+      final selectedSchedulesForMonthView = schedulesForMonth
+              .where((s) => _selectedScheduleIds.contains(s.id))
+              .toList();
+
+      return MonthCalendarView(
+        pageController: _monthPageController,
+        onPageChanged: _onMonthPageChanged,
+        onDateDoubleTapped: _onDateDoubleTappedInMonthView,
+        isSelectionMode: _isSelectionMode,
+        schedules: schedulesForMonth,
+        selectedSchedules: selectedSchedulesForMonthView,
+        onSelectionChanged: _onScheduleSelectionChanged,
+      );
+  }
+
+  Widget _buildWeekView() {
+    return PageView.builder(
+      controller: _weekPageController,
+      onPageChanged: _onWeekPageChanged,
+      itemBuilder: (context, index) {
+        final weekOffset = index - initialPageOffset;
+        final now = DateTime.now();
+        final startOfWeekToday = now.subtract(Duration(days: now.weekday % 7));
+        final startOfWeek = DateUtils.dateOnly(startOfWeekToday).add(Duration(days: weekOffset * 7));
+        final endOfWeek = startOfWeek.add(const Duration(days: 7));
+
+        final schedulesForWeek = _allSchedulesMap.values.where((s) {
+            return !s.date.isBefore(startOfWeek) && s.date.isBefore(endOfWeek);
+        }).toList();
+
+        final schedulesToShow = [...schedulesForWeek];
+        if (_temporarySchedule != null) {
+          final tempStartOfWeek = _temporarySchedule!.date.subtract(Duration(days: _temporarySchedule!.date.weekday % 7));
+          if (DateUtils.isSameDay(tempStartOfWeek, startOfWeek)) {
+            schedulesToShow.removeWhere((s) => s.id == _temporarySchedule!.id);
+            schedulesToShow.add(_temporarySchedule!);
+          }
+        }
+
+        return WeekCalendarView(
+          key: ValueKey(startOfWeek.toIso8601String()),
+          startOfWeek: startOfWeek,
+          schedules: schedulesToShow,
+          onGridTapped: _onGridTappedInWeekView,
+          onScheduleTapped: _onScheduleTapped,
+          onScheduleUpdated: _updateSchedule,
+          onTemporaryScheduleUpdated: _onTemporaryScheduleUpdated,
+          isSelectionMode: _isSelectionMode,
+          selectedScheduleIds: _selectedScheduleIds,
+          onDragStart: () { if(mounted) setState(() => _isDraggingOnGrid = true); },
+          onDragEnd: () { if(mounted) setState(() => _isDraggingOnGrid = false); },
+        );
+      },
+    );
+  }
+
 
   PreferredSizeWidget _buildAppBar() {
     String title;
@@ -373,11 +378,7 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
             ? Icons.view_week_outlined
             : Icons.calendar_view_month_outlined),
         tooltip: _displayMode == CalendarDisplayMode.month ? '週表示に切り替え' : '月表示に切り替え',
-        onPressed: () {
-          _setDisplayMode(_displayMode == CalendarDisplayMode.month
-              ? CalendarDisplayMode.week
-              : CalendarDisplayMode.month);
-        },
+        onPressed: () => _setDisplayMode(_displayMode == CalendarDisplayMode.month ? CalendarDisplayMode.week : CalendarDisplayMode.month),
       ),
       title: Center(
         child: GestureDetector(

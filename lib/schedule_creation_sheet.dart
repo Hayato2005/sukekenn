@@ -30,7 +30,6 @@ class _ScheduleCreationSheetState extends State<ScheduleCreationSheet> {
   late TimeOfDay _endTime;
   late bool _isAllDay;
 
-  // 予定種別と関連設定
   late ScheduleType _scheduleType;
   late MatchingType _matchingType;
   late bool _isPublic;
@@ -43,15 +42,17 @@ class _ScheduleCreationSheetState extends State<ScheduleCreationSheet> {
     super.initState();
     _updateStateFromWidget();
 
-    // クイック登録モード（タイトルが空）の場合のみフォーカス
+    // ★★★ クイック登録時の自動フォーカス機能を削除 ★★★
+    /*
     if (widget.schedule.title.isEmpty) {
       Timer(const Duration(milliseconds: 300), () {
         if (mounted) FocusScope.of(context).requestFocus(_titleFocusNode);
       });
     }
+    */
 
     _titleController.addListener(() {
-      setState(() {}); // 登録ボタンの活性/非活性を更新するため
+      setState(() {});
     });
   }
 
@@ -76,7 +77,6 @@ class _ScheduleCreationSheetState extends State<ScheduleCreationSheet> {
     _startTime = TimeOfDay(hour: schedule.startHour.floor(), minute: ((schedule.startHour % 1) * 60).round());
     _endTime = TimeOfDay(hour: schedule.endHour.floor(), minute: ((schedule.endHour % 1) * 60).round());
     _isAllDay = schedule.isAllDay;
-
     _scheduleType = schedule.scheduleType;
     _matchingType = schedule.matchingType;
     _isPublic = schedule.isPublic;
@@ -89,14 +89,12 @@ class _ScheduleCreationSheetState extends State<ScheduleCreationSheet> {
     super.dispose();
   }
 
-  // === 時刻選択の補助ロジック ===
   Future<void> _pickStartTime() async {
     final picked = await showTimePicker(context: context, initialTime: _startTime);
     if (picked != null && picked != _startTime) {
       setState(() {
         final duration = _calculateDuration(_startTime, _endTime);
         _startTime = picked;
-        // 期間を維持したまま終了時刻を更新
         final newEndTimeDateTime = DateTime(2000, 1, 1, picked.hour, picked.minute).add(duration);
         _endTime = TimeOfDay.fromDateTime(newEndTimeDateTime);
       });
@@ -126,10 +124,8 @@ class _ScheduleCreationSheetState extends State<ScheduleCreationSheet> {
     return e.isAfter(s) ? e.difference(s) : e.add(const Duration(days: 1)).difference(s);
   }
 
-  // === 保存処理 ===
   void _saveSchedule() async {
     if (_titleController.text.trim().isEmpty || _isSaving) return;
-
     setState(() => _isSaving = true);
 
     final updatedSchedule = widget.schedule.copyWith(
@@ -139,19 +135,16 @@ class _ScheduleCreationSheetState extends State<ScheduleCreationSheet> {
       endHour: _isAllDay ? 24 : _endTime.hour + _endTime.minute / 60.0,
       isAllDay: _isAllDay,
       scheduleType: _scheduleType,
-      matchingType: _scheduleType == ScheduleType.available ? _matchingType : null,
-      isPublic: _scheduleType == ScheduleType.available ? _isPublic : null,
-      color: widget.schedule.color,
+      matchingType: _scheduleType == ScheduleType.available ? _matchingType : MatchingType.friend,
+      isPublic: _scheduleType == ScheduleType.available ? _isPublic : true,
     );
 
     try {
-      await Future.delayed(const Duration(milliseconds: 300));
+      await Future.delayed(const Duration(milliseconds: 100));
       widget.onClose(savedSchedule: updatedSchedule, isDeleted: false);
     } catch (e) {
       if(mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('保存に失敗しました: $e'))
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('保存に失敗しました: $e')));
       }
       setState(() => _isSaving = false);
     }
@@ -180,7 +173,6 @@ class _ScheduleCreationSheetState extends State<ScheduleCreationSheet> {
   @override
   Widget build(BuildContext context) {
     final isTitleEmpty = _titleController.text.trim().isEmpty;
-
     return Material(
       elevation: 8,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
@@ -228,7 +220,6 @@ class _ScheduleCreationSheetState extends State<ScheduleCreationSheet> {
 
   List<Widget> _buildFormContent() {
     bool isEditing = !widget.schedule.id.startsWith('temporary');
-
     return [
       const SizedBox(height: 16),
       Center(
@@ -302,7 +293,6 @@ class _ScheduleCreationSheetState extends State<ScheduleCreationSheet> {
         trailing: const Icon(Icons.arrow_forward_ios, size: 16),
         onTap: () { /* TODO: 詳細設定ポップアップ表示 */ },
       ),
-
       if (isEditing)
          Padding(
            padding: const EdgeInsets.only(top: 32.0, bottom: 32.0),
